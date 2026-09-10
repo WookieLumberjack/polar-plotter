@@ -36,7 +36,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y clang ninja-build cmake \
-            libgl1-mesa-dev libx11-dev libxrandr-dev libxinerama-dev \
+            libgl1-mesa-dev libx11-dev libxext-dev libxrandr-dev libxinerama-dev \
             libxcursor-dev libxi-dev libxkbcommon-dev
 
       - name: Install toolchain (macOS)
@@ -71,7 +71,7 @@ jobs:
       - run: |
           sudo apt-get update
           sudo apt-get install -y clang clang-tidy clang-format ninja-build cmake \
-            libgl1-mesa-dev libx11-dev libxrandr-dev libxinerama-dev \
+            libgl1-mesa-dev libx11-dev libxext-dev libxrandr-dev libxinerama-dev \
             libxcursor-dev libxi-dev libxkbcommon-dev
       - name: Configure (for compile_commands.json)
         run: cmake --preset debug
