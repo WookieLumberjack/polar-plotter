@@ -4,18 +4,70 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-polar-plotter — a C++ project (details and build system to be added).
+Interactive desktop tool for learning 2D vector math: enter vector quantities,
+plot them on a polar canvas, and see vector operations (sum, difference, dot
+product, angle between) update live. Dear ImGui + ImPlot front end.
 
-<!--
-Fill in as the project takes shape. Keep this file minimal: only add a line if
-Claude would get it wrong without it. Candidate sections:
+## Build & test
 
-- Build / test / lint commands (non-obvious ones only)
-- Code style rules that differ from C++ defaults
-- Testing quirks (how to run a single test)
-- Repo etiquette (branch naming, PR/commit conventions)
-- Required env vars or setup steps
-- Non-obvious gotchas or architectural decisions
+Requires Clang (C++23), CMake ≥ 3.24, Ninja. Dependencies (GLFW, Dear ImGui,
+ImPlot, Catch2) are fetched and pinned by `cmake/Dependencies.cmake` — no system
+packages beyond a working OpenGL/X11 (Linux) toolchain.
 
-Re-run /init once there is code and a toolchain to document.
--->
+```sh
+cmake --preset debug          # configure (Ninja + clang/clang++)
+cmake --build --preset debug
+ctest --preset debug          # run the Catch2 suite
+```
+
+- On this Linux box the unversioned `clang++` may be absent; configure with
+  `-D CMAKE_CXX_COMPILER=clang++-21` (or set `CC`/`CXX`) instead of the preset.
+- `--preset asan` builds with ASan + UBSan.
+- Run one test: `./build/debug/tests/vector_math_tests "<test name>"` (Catch2),
+  or `ctest --preset debug -R <regex>`.
+- `compile_commands.json` is written to the build dir for clang-tidy/editors.
+
+## Warnings & linting
+
+First-party code is compiled with `-Wall -Wextra -Wpedantic -Werror` plus extras
+(see `cmake/CompilerWarnings.cmake`), applied via the `polar_plotter::warnings`
+INTERFACE target. Never link it into third-party targets.
+
+- Format: `clang-format-21 -i <files>` (config in `.clang-format`).
+- Lint: `clang-tidy-21 -p build <file>` (config in `.clang-tidy`). Only
+  `src/`, `app/`, `tests/` are in scope; `build/_deps/**` is excluded.
+
+## Architecture
+
+One-way module dependency graph — do not add edges against it:
+
+| Module (`src/<name>/`) | May depend on | Must NOT depend on |
+|---|---|---|
+| `vector_math` (`vecmath::`) | standard library only | ImGui, ImPlot, anything UI |
+| `polar_plotting` (`polarplot::`) | Dear ImGui, ImPlot | `vector_math`, `ui` |
+| `ui` (`ui::`) | `vector_math`, `polar_plotting`, ImGui, ImPlot | GLFW / windowing |
+| `app/` | `ui`, plus GLFW/OpenGL host glue | — |
+
+`polar_plotting` is meant to be liftable into another project, so it keeps its
+own `polarplot::Point` rather than reaching for `vecmath::Vec2`. Conversions
+happen in `ui`.
+
+Each module is `src/<name>/{include/<name>/*.hpp, src/*.cpp}` with its own
+`CMakeLists.txt` exporting a `polar_plotter::<name>` alias target.
+
+## Conventions
+
+- TDD: write the failing Catch2 test first, in `tests/`. Tests target public
+  module interfaces, not internals.
+- Naming (enforced by clang-tidy): `lower_case` functions/variables/namespaces,
+  `CamelCase` types, trailing `_` on private members, `k`-prefixed `CamelCase`
+  constants.
+- No disk persistence beyond `ui::Config` (a flat `key=value` text file for
+  last-used inputs). Don't introduce other file I/O.
+- `imgui_test_engine` is intentionally not used.
+
+## Portability
+
+Targets Linux, Windows (MSYS2 `clang64`), and macOS, all with Clang. Keep
+platform branches in `app/` and the CMake dependency layer; modules stay
+platform-agnostic.
