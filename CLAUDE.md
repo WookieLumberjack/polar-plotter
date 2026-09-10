@@ -10,9 +10,15 @@ product, angle between) update live. Dear ImGui + ImPlot front end.
 
 ## Build & test
 
-Requires Clang (C++23), CMake ≥ 3.24, Ninja. Dependencies (GLFW, Dear ImGui,
-ImPlot, Catch2) are fetched and pinned by `cmake/Dependencies.cmake` — no system
-packages beyond a working OpenGL/X11 (Linux) toolchain.
+Requires Clang (C++23), CMake ≥ 3.24, Ninja. Dependencies are fetched and pinned
+by `cmake/Dependencies.cmake` (GLFW 3.4, Dear ImGui v1.92.9b, ImPlot v1.0,
+Catch2 v3.7.1) — no system packages beyond a working OpenGL/X11 (Linux)
+toolchain.
+
+ImPlot 1.0 replaced the trailing `flags/offset/stride` params of the `PlotX`
+functions with a single `ImPlotSpec`. `ImPlotSpec` is not an aggregate, so build
+it with `{ImPlotProp_Flags, value, ...}` prop-pairs or by assigning fields, not
+a designated initializer.
 
 ```sh
 cmake --preset debug          # configure (Ninja + clang/clang++)
