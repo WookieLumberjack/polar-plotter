@@ -14,7 +14,7 @@ constexpr double kTwoPi = 2.0 * std::numbers::pi;
 
 // Draw a closed poly-line through the given data points.
 void plot_closed_path(const char* id, const double* xs, const double* ys, int n) {
-    ImPlot::PlotLine(id, xs, ys, n, ImPlotLineFlags_Loop);
+    ImPlot::PlotLine(id, xs, ys, n, {ImPlotProp_Flags, ImPlotLineFlags_Loop});
 }
 
 }  // namespace

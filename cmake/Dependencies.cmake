@@ -38,7 +38,7 @@ list(APPEND CMAKE_MODULE_PATH "${catch2_SOURCE_DIR}/extras")
 # ---------------------------------------------------------------------------
 FetchContent_Declare(imgui
     GIT_REPOSITORY https://github.com/ocornut/imgui.git
-    GIT_TAG v1.90.9
+    GIT_TAG v1.92.9b
     GIT_SHALLOW TRUE)
 FetchContent_MakeAvailable(imgui)
 
@@ -57,6 +57,11 @@ target_link_libraries(imgui PUBLIC glfw)
 target_compile_features(imgui PUBLIC cxx_std_23)
 add_library(imgui::imgui ALIAS imgui)
 
+# Vendored code: not our warning policy.
+if(NOT MSVC)
+    target_compile_options(imgui PRIVATE -w)
+endif()
+
 if(APPLE)
     target_link_libraries(imgui PUBLIC "-framework OpenGL")
 elseif(WIN32)
@@ -71,7 +76,7 @@ endif()
 # ---------------------------------------------------------------------------
 FetchContent_Declare(implot
     GIT_REPOSITORY https://github.com/epezent/implot.git
-    GIT_TAG v0.16
+    GIT_TAG v1.0
     GIT_SHALLOW TRUE)
 FetchContent_MakeAvailable(implot)
 
@@ -83,3 +88,7 @@ target_include_directories(implot SYSTEM PUBLIC ${implot_SOURCE_DIR})
 target_link_libraries(implot PUBLIC imgui)
 target_compile_features(implot PUBLIC cxx_std_23)
 add_library(implot::implot ALIAS implot)
+
+if(NOT MSVC)
+    target_compile_options(implot PRIVATE -w)
+endif()
