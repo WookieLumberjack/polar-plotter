@@ -1,0 +1,19 @@
+# Build output
+/build/
+/out/
+/cmake-build-*/
+CMakeUserPresets.json
+
+# Editor / tooling
+/.cache/
+compile_commands.json
+.vs/
+.vscode/
+*.user
+
+# Local Claude config
+CLAUDE.local.md
+
+# App-written config (only produced at runtime)
+*.conf
+imgui.ini

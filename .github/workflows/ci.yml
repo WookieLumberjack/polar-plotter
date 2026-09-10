@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-clang
+            os: ubuntu-latest
+          - name: macos-clang
+            os: macos-latest
+          - name: windows-clang64
+            os: windows-latest
+
+    defaults:
+      run:
+        shell: ${{ matrix.name == 'windows-clang64' && 'msys2 {0}' || 'bash' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain (Linux)
+        if: matrix.name == 'linux-clang'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang ninja-build cmake \
+            libgl1-mesa-dev libx11-dev libxrandr-dev libxinerama-dev \
+            libxcursor-dev libxi-dev libxkbcommon-dev
+
+      - name: Install toolchain (macOS)
+        if: matrix.name == 'macos-clang'
+        run: brew install ninja
+
+      - name: Install toolchain (Windows / MSYS2 clang64)
+        if: matrix.name == 'windows-clang64'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: CLANG64
+          update: true
+          install: >-
+            mingw-w64-clang-x86_64-clang
+            mingw-w64-clang-x86_64-cmake
+            mingw-w64-clang-x86_64-ninja
+
+      - name: Configure
+        run: cmake --preset debug
+
+      - name: Build
+        run: cmake --build --preset debug
+
+      - name: Test
+        run: ctest --preset debug
+
+  lint:
+    name: clang-format + clang-tidy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y clang clang-tidy clang-format ninja-build cmake \
+            libgl1-mesa-dev libx11-dev libxrandr-dev libxinerama-dev \
+            libxcursor-dev libxi-dev libxkbcommon-dev
+      - name: Configure (for compile_commands.json)
+        run: cmake --preset debug
+      - name: clang-format
+        run: git ls-files '*.cpp' '*.hpp' | xargs clang-format --dry-run --Werror
+      - name: clang-tidy
+        run: |
+          git ls-files 'src/*.cpp' 'app/*.cpp' 'tests/*.cpp' \
+            | xargs clang-tidy -p build --warnings-as-errors='*'
