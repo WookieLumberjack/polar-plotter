@@ -9,6 +9,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # X11 dev packages Dear ImGui's GLFW backend needs on Linux.
+  LINUX_X11_DEPS: >-
+    libgl1-mesa-dev libx11-dev libxext-dev libxrandr-dev libxinerama-dev
+    libxcursor-dev libxi-dev libxkbcommon-dev
+
 jobs:
   build:
     name: ${{ matrix.name }}
@@ -35,9 +41,7 @@ jobs:
         if: matrix.name == 'linux-clang'
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang ninja-build cmake \
-            libgl1-mesa-dev libx11-dev libxext-dev libxrandr-dev libxinerama-dev \
-            libxcursor-dev libxi-dev libxkbcommon-dev
+          sudo apt-get install -y clang ninja-build cmake $LINUX_X11_DEPS
 
       - name: Install toolchain (macOS)
         if: matrix.name == 'macos-clang'
@@ -48,7 +52,9 @@ jobs:
         uses: msys2/setup-msys2@v2
         with:
           msystem: CLANG64
-          update: true
+          # Don't run a full `pacman -Syuu` (flaky mirrors); the base image is
+          # recent enough and we pin nothing that needs the very latest.
+          update: false
           install: >-
             mingw-w64-clang-x86_64-clang
             mingw-w64-clang-x86_64-cmake
@@ -68,16 +74,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: |
+
+      - name: Install LLVM 21 + deps
+        run: |
+          codename=$(lsb_release -cs)
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc >/dev/null
+          echo "deb http://apt.llvm.org/$codename/ llvm-toolchain-$codename-21 main" | sudo tee /etc/apt/sources.list.d/llvm.list
           sudo apt-get update
-          sudo apt-get install -y clang clang-tidy clang-format ninja-build cmake \
-            libgl1-mesa-dev libx11-dev libxext-dev libxrandr-dev libxinerama-dev \
-            libxcursor-dev libxi-dev libxkbcommon-dev
+          sudo apt-get install -y clang-21 clang-tidy-21 clang-format-21 ninja-build cmake $LINUX_X11_DEPS
+          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-21 100
+          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-21 100
+
       - name: Configure (for compile_commands.json)
         run: cmake --preset debug
+
       - name: clang-format
-        run: git ls-files '*.cpp' '*.hpp' | xargs clang-format --dry-run --Werror
+        run: git ls-files '*.cpp' '*.hpp' | xargs clang-format-21 --dry-run --Werror
+
       - name: clang-tidy
         run: |
-          git ls-files 'src/*.cpp' 'app/*.cpp' 'tests/*.cpp' \
-            | xargs clang-tidy -p build --warnings-as-errors='*'
+          git ls-files '*.cpp' | grep -E '^(src|app|tests)/' \
+            | xargs clang-tidy-21 -p build/debug --warnings-as-errors='*'

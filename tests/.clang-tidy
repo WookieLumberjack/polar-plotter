@@ -1,0 +1,7 @@
+# Test code inherits the project checks but is exempt from the production
+# constant-naming convention: `constexpr Vec2 a{...}` reads better than `kA` in
+# a math test, and Catch2's macros generate identifiers of their own.
+---
+InheritParentConfig: true
+Checks: >
+  -readability-identifier-naming

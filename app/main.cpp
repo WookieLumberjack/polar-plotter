@@ -2,10 +2,10 @@
 // ImPlot, and runs ui::App once per frame. Nothing project-specific lives here.
 
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
-#include <fstream>
 #include <filesystem>
-#include <print>
+#include <fstream>
 #include <vector>
 
 // Only core GL 1.1 entry points (glViewport/glClear/...) are used directly here;
@@ -28,7 +28,7 @@
 namespace {
 
 void glfw_error_callback(int error, const char* description) {
-    std::println(stderr, "GLFW error {}: {}", error, description);
+    std::fprintf(stderr, "GLFW error %d: %s\n", error, description);
 }
 
 // Write an RGB framebuffer (top-down) as a binary PPM (P6). Chosen for zero
@@ -40,8 +40,7 @@ bool write_ppm(const std::filesystem::path& path, int width, int height,
         return false;
     }
     out << "P6\n" << width << ' ' << height << "\n255\n";
-    out.write(reinterpret_cast<const char*>(rgb.data()),
-              static_cast<std::streamsize>(rgb.size()));
+    out.write(reinterpret_cast<const char*>(rgb.data()), static_cast<std::streamsize>(rgb.size()));
     return out.good();
 }
 
@@ -143,10 +142,11 @@ int main() {
                 glFinish();
                 if (!write_ppm(shot_path, display_w, display_h,
                                read_framebuffer(display_w, display_h))) {
-                    std::println(stderr, "failed to write screenshot to {}", shot_path);
+                    std::fprintf(stderr, "failed to write screenshot to %s\n", shot_path);
                     return EXIT_FAILURE;
                 }
-                std::println("wrote {}x{} screenshot to {}", display_w, display_h, shot_path);
+                std::fprintf(stderr, "wrote %dx%d screenshot to %s\n", display_w, display_h,
+                             shot_path);
                 break;
             }
 
