@@ -106,6 +106,8 @@ void App::draw_controls() {
 
     zero_direction_input_focused_ = zero_direction_focused;
 
+    ImGui::Checkbox("Keep zero-direction arc visible", &show_zero_direction_arc_persistent_);
+
     ImGui::Spacing();
     ImGui::TextUnformatted("Rotation direction");
     ImGui::SameLine();
@@ -210,7 +212,7 @@ void App::draw_plot() const {
                                               to_annotation(construction.a_from_b_tip), convention);
         }
     }
-    if (zero_direction_input_focused_) {
+    if (zero_direction_input_focused_ || show_zero_direction_arc_persistent_) {
         polarplot::draw_angle_arc(extent * 0.85, convention.zero_direction);
     }
     polarplot::end_vector_plot();

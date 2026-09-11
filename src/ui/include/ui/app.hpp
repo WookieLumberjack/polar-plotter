@@ -56,6 +56,10 @@ private:
     // input has ImGui focus; draw_plot() reads it to decide whether to draw
     // the transient zero-direction angle arc this frame.
     bool zero_direction_input_focused_{false};
+    // Independent, persistent lifecycle for the zero-direction angle arc:
+    // when true, draw_plot() draws the arc every frame regardless of input
+    // focus (in addition to the transient, focus-driven display above).
+    bool show_zero_direction_arc_persistent_{false};
     // Plot-wide tip marker style, shared by every named vector (A, B, A+B,
     // A-B) -- there is no per-vector styling.
     polarplot::TipMarkerStyle marker_style_{polarplot::TipMarkerStyle::kDot};
