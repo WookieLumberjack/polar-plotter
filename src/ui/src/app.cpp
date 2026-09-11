@@ -21,6 +21,11 @@ vecmath::Vec2 to_vec(const std::array<float, 2>& xy) {
 polarplot::Point to_point(vecmath::Vec2 v) { return {v.x, v.y}; }
 
 constexpr double kRadToDeg = 180.0 / std::numbers::pi;
+constexpr double kDegToRad = std::numbers::pi / 180.0;
+
+// angle_sign stays fixed at today's default (+1, counterclockwise) until the
+// rotation-direction / measurement-convention toggles land in a later ticket.
+constexpr double kDefaultAngleSign = 1.0;
 
 }  // namespace
 
@@ -75,6 +80,9 @@ void App::draw_controls() {
     ImGui::InputFloat2("B (x, y)", b_.xy.data(), "%.3f");
 
     ImGui::Spacing();
+    ImGui::InputFloat("Zero direction (deg)", &zero_direction_deg_, 1.0F, 10.0F, "%.2f");
+
+    ImGui::Spacing();
     ImGui::Checkbox("Show A + B", &show_sum_);
     ImGui::SameLine();
     ImGui::Checkbox("Show A - B", &show_difference_);
@@ -106,17 +114,22 @@ void App::draw_plot() const {
     }
     extent *= 1.2;
 
+    const polarplot::AngleConvention convention{
+        .zero_direction = static_cast<double>(zero_direction_deg_) * kDegToRad,
+        .angle_sign = kDefaultAngleSign,
+    };
+
     if (!polarplot::begin_vector_plot("##polar", extent)) {
         return;
     }
-    polarplot::draw_polar_grid(extent);
-    polarplot::draw_vector("A", to_point(a));
-    polarplot::draw_vector("B", to_point(b));
+    polarplot::draw_polar_grid(extent, convention);
+    polarplot::draw_vector("A", to_point(a), convention);
+    polarplot::draw_vector("B", to_point(b), convention);
     if (show_difference_) {
-        polarplot::draw_vector("A - B", to_point(diff));
+        polarplot::draw_vector("A - B", to_point(diff), convention);
     }
     if (show_sum_) {
-        polarplot::draw_vector("A + B", to_point(sum));
+        polarplot::draw_vector("A + B", to_point(sum), convention);
     }
     polarplot::end_vector_plot();
 }

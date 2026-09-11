@@ -23,3 +23,22 @@ if(NOT MSVC)
 endif()
 
 catch_discover_tests(vector_math_tests)
+
+add_executable(polar_plotting_tests
+    polar_plot_tests.cpp)
+
+target_link_libraries(polar_plotting_tests
+    PRIVATE
+        polar_plotter::polar_plotting
+        polar_plotter::warnings
+        Catch2::Catch2WithMain)
+
+target_compile_features(polar_plotting_tests PRIVATE cxx_std_23)
+
+# See the comment above vec2_tests.cpp's identical suppression.
+if(NOT MSVC)
+    set_source_files_properties(polar_plot_tests.cpp PROPERTIES
+        COMPILE_OPTIONS "-Wno-unknown-warning-option;-Wno-c2y-extensions")
+endif()
+
+catch_discover_tests(polar_plotting_tests)

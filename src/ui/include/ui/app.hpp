@@ -39,6 +39,11 @@ private:
     VectorInput b_{{-1.0F, 2.0F}};
     bool show_sum_{false};
     bool show_difference_{true};
+    // Raw zero-direction angle, in degrees, as entered by the user. angle_sign
+    // stays fixed at today's default (+1, counterclockwise) for now -- the
+    // rotation-direction / measurement-convention toggles that would let the
+    // user change it are a later ticket.
+    float zero_direction_deg_{0.0F};
 
     void draw_controls();
     void draw_plot() const;
