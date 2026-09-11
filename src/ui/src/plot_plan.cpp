@@ -29,6 +29,10 @@ PlotPlan plan_plot(const PlotInputs& inputs) {
         .angle_sign = compose_angle_sign(inputs.rotation_direction, inputs.measurement_convention),
     };
 
+    // Push order below is part of PlotPlan's contract: when both are present,
+    // the difference's tip-to-tail annotation always precedes the sum's two,
+    // so a caller drawing tip_to_tail_annotations by index (e.g. an
+    // "tip_to_tail_<i>" id) gets a stable, predictable id per entry.
     if (inputs.show_difference) {
         plan.difference = to_point(diff);
         if (inputs.show_tip_to_tail) {

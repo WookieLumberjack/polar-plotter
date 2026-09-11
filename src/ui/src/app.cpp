@@ -203,6 +203,10 @@ void App::draw_plot() const {
     if (plan.sum) {
         polarplot::draw_vector("A + B", *plan.sum, plan.convention, marker_style_);
     }
+    // Positional ids: fine because draw_annotation_vector's id is never shown
+    // (see polar_plot.hpp), only needs to be unique per frame, and
+    // PlotPlan::tip_to_tail_annotations' push order is a documented contract
+    // (see plot_plan.cpp) -- not derived from branching here.
     for (std::size_t i = 0; i < plan.tip_to_tail_annotations.size(); ++i) {
         const std::string id = "tip_to_tail_" + std::to_string(i);
         polarplot::draw_annotation_vector(id.c_str(), plan.tip_to_tail_annotations[i],
