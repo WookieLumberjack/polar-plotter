@@ -1,6 +1,7 @@
 add_library(ui STATIC
     src/app.cpp
-    src/config.cpp)
+    src/config.cpp
+    src/zero_direction.cpp)
 
 target_include_directories(ui PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include)
