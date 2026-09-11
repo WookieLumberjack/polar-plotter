@@ -10,7 +10,10 @@
 namespace polarplot {
 namespace {
 
-constexpr double kTwoPi = 2.0 * std::numbers::pi;
+constexpr double kPi = std::numbers::pi;
+constexpr double kTwoPi = 2.0 * kPi;
+constexpr double kTopAngle = kPi / 2.0;  // plot "up"/12 o'clock, in raw coordinates
+constexpr int kArcSegments = 48;
 
 // Build the ImPlotSpec used for an arrow's shaft/head: \p line_color when
 // non-null, otherwise ImPlot's default per-item color cycling.
@@ -152,6 +155,30 @@ void draw_annotation_vector(const char* id, AnnotationVector annotation, AngleCo
     const std::string shaft_id = std::string("##annotation_") + id;
     const std::string head_id = std::string("##annotation_head_") + id;
     plot_arrow_shape(shaft_id, head_id, ptail, phead, head_frac, &kAnnotationColor);
+}
+
+void draw_angle_arc(double radius, double to_angle, ArcStyle style) {
+    // Sweep the shorter way from top to to_angle: wrap the delta into
+    // (-pi, pi].
+    double delta = std::fmod(to_angle - kTopAngle, kTwoPi);
+    if (delta <= -kPi) {
+        delta += kTwoPi;
+    } else if (delta > kPi) {
+        delta -= kTwoPi;
+    }
+
+    std::array<double, kArcSegments + 1> ax{};
+    std::array<double, kArcSegments + 1> ay{};
+    for (int i = 0; i <= kArcSegments; ++i) {
+        const double t = static_cast<double>(i) / static_cast<double>(kArcSegments);
+        const double angle = kTopAngle + (delta * t);
+        ax[static_cast<std::size_t>(i)] = radius * std::cos(angle);
+        ay[static_cast<std::size_t>(i)] = radius * std::sin(angle);
+    }
+
+    const ImVec4 color{style.r, style.g, style.b, style.a};
+    const ImPlotSpec spec{ImPlotProp_LineColor, color, ImPlotProp_LineWeight, style.thickness};
+    ImPlot::PlotLine("##angle_arc", ax.data(), ay.data(), kArcSegments + 1, spec);
 }
 
 }  // namespace polarplot

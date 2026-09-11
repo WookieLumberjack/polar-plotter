@@ -49,6 +49,11 @@ private:
     // previously-fixed +1 (counterclockwise, with rotation).
     RotationDirection rotation_direction_{RotationDirection::CounterClockwise};
     MeasurementConvention measurement_convention_{MeasurementConvention::WithRotation};
+    // Set fresh each frame in draw_controls() -- true while either the raw
+    // zero-direction input or the plain-language ("N deg left/right of top")
+    // input has ImGui focus; draw_plot() reads it to decide whether to draw
+    // the transient zero-direction angle arc this frame.
+    bool zero_direction_input_focused_{false};
 
     void draw_controls();
     void draw_plot() const;

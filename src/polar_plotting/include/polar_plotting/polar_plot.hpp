@@ -80,6 +80,26 @@ struct AnnotationVector {
 void draw_annotation_vector(const char* id, AnnotationVector annotation, AngleConvention convention,
                             double head_frac = 0.12);
 
+/// Visual style for \ref draw_angle_arc: an RGBA color (components in [0, 1])
+/// and a line thickness (pixels). Kept as a plain struct -- rather than an
+/// ImGui/ImPlot type -- so this header doesn't need to include their headers.
+struct ArcStyle {
+    float r{1.0F};
+    float g{0.65F};
+    float b{0.0F};
+    float a{1.0F};
+    float thickness{2.0F};
+};
+
+/// Draw an arc of radius \p radius from the plot's fixed "up"/top reference
+/// direction (12 o'clock, i.e. the plot's own +y axis) around to \p to_angle
+/// (radians, in the plot's own raw coordinate frame -- the same frame
+/// \c AngleConvention::zero_direction is expressed in), taking the shorter
+/// way around. A pure "draw this arc now" primitive: it has no notion of
+/// "transient" vs. "persistent" annotation lifecycles -- callers decide when
+/// to call it each frame.
+void draw_angle_arc(double radius, double to_angle, ArcStyle style = {});
+
 }  // namespace polarplot
 
 #endif  // POLAR_PLOTTING_POLAR_PLOT_HPP

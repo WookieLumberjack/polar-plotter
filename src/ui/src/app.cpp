@@ -1,5 +1,6 @@
 #include "ui/app.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <numbers>
 #include <utility>
@@ -10,6 +11,7 @@
 #include "polar_plotting/polar_plot.hpp"
 #include "ui/config.hpp"
 #include "ui/construction.hpp"
+#include "ui/zero_direction.hpp"
 #include "vector_math/vec2.hpp"
 
 namespace ui {
@@ -82,6 +84,27 @@ void App::draw_controls() {
 
     ImGui::Spacing();
     ImGui::InputFloat("Zero direction (deg)", &zero_direction_deg_, 1.0F, 10.0F, "%.2f");
+    bool zero_direction_focused = ImGui::IsItemFocused();
+
+    PlainZeroDirection plain = raw_to_plain_zero_direction(zero_direction_deg_);
+    int side_index = plain.side == ZeroDirectionSide::kLeft ? 0 : 1;
+    bool plain_changed = false;
+
+    ImGui::PushID("zero_direction_plain");
+    ImGui::TextUnformatted("Zero direction, plain language:");
+    plain_changed |= ImGui::Combo("Side", &side_index, "left\0right\0\0");
+    zero_direction_focused |= ImGui::IsItemFocused();
+    plain_changed |= ImGui::InputFloat("deg of top", &plain.degrees_from_top, 1.0F, 10.0F, "%.2f");
+    zero_direction_focused |= ImGui::IsItemFocused();
+    ImGui::PopID();
+
+    if (plain_changed) {
+        plain.side = side_index == 0 ? ZeroDirectionSide::kLeft : ZeroDirectionSide::kRight;
+        plain.degrees_from_top = std::clamp(plain.degrees_from_top, 0.0F, 180.0F);
+        zero_direction_deg_ = plain_to_raw_zero_direction(plain);
+    }
+
+    zero_direction_input_focused_ = zero_direction_focused;
 
     ImGui::Spacing();
     ImGui::TextUnformatted("Rotation direction");
@@ -167,6 +190,9 @@ void App::draw_plot() const {
             polarplot::draw_annotation_vector("sum_a_from_b_tip",
                                               to_annotation(construction.a_from_b_tip), convention);
         }
+    }
+    if (zero_direction_input_focused_) {
+        polarplot::draw_angle_arc(extent * 0.85, convention.zero_direction);
     }
     polarplot::end_vector_plot();
 }
