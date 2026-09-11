@@ -80,7 +80,14 @@ Point to_plotted_point(Point p, AngleConvention convention) {
 }
 
 bool begin_vector_plot(const char* title, double extent) {
+    // Suppress the rectangular plot-area border ImPlot draws by default; the
+    // circular grid (see draw_polar_grid) is the only boundary we want
+    // visible. Popped in end_vector_plot -- only when BeginPlot succeeds,
+    // matching ImPlot's "only call EndPlot() if BeginPlot() returns true"
+    // contract.
+    ImPlot::PushStyleColor(ImPlotCol_PlotBorder, ImVec4(0.0F, 0.0F, 0.0F, 0.0F));
     if (!ImPlot::BeginPlot(title, ImVec2(-1, -1), ImPlotFlags_Equal)) {
+        ImPlot::PopStyleColor();
         return false;
     }
     ImPlot::SetupAxes("x", "y");
@@ -88,7 +95,10 @@ bool begin_vector_plot(const char* title, double extent) {
     return true;
 }
 
-void end_vector_plot() { ImPlot::EndPlot(); }
+void end_vector_plot() {
+    ImPlot::EndPlot();
+    ImPlot::PopStyleColor();
+}
 
 void draw_polar_grid(double max_radius, AngleConvention convention, int rings, int spokes) {
     // One muted, fixed color for the whole grid (no per-ring colormap

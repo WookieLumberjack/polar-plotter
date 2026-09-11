@@ -30,6 +30,22 @@ polarplot::AnnotationVector to_annotation(const ConstructionVector& construction
 constexpr double kRadToDeg = 180.0 / std::numbers::pi;
 constexpr double kDegToRad = std::numbers::pi / 180.0;
 
+// Draw a pair of mutually-exclusive radio buttons on the same line (\p
+// label_a first, then \p label_b) and return the updated "is \p label_a
+// selected" state. Caller supplies the current state via \p is_a; widget IDs
+// are exactly \p label_a / \p label_b, so behavior/labels are unchanged from
+// writing the pair out longhand.
+bool draw_binary_radio(const char* label_a, const char* label_b, bool is_a) {
+    if (ImGui::RadioButton(label_a, is_a)) {
+        is_a = true;
+    }
+    ImGui::SameLine();
+    if (ImGui::RadioButton(label_b, !is_a)) {
+        is_a = false;
+    }
+    return is_a;
+}
+
 }  // namespace
 
 App::App() = default;
@@ -111,25 +127,19 @@ void App::draw_controls() {
     ImGui::Spacing();
     ImGui::TextUnformatted("Rotation direction");
     ImGui::SameLine();
-    const bool rotation_is_ccw = rotation_direction_ == RotationDirection::CounterClockwise;
-    if (ImGui::RadioButton("CCW##rotation_direction", rotation_is_ccw)) {
-        rotation_direction_ = RotationDirection::CounterClockwise;
-    }
-    ImGui::SameLine();
-    if (ImGui::RadioButton("CW##rotation_direction", !rotation_is_ccw)) {
-        rotation_direction_ = RotationDirection::Clockwise;
-    }
+    const bool rotation_is_ccw =
+        draw_binary_radio("CCW##rotation_direction", "CW##rotation_direction",
+                          rotation_direction_ == RotationDirection::CounterClockwise);
+    rotation_direction_ =
+        rotation_is_ccw ? RotationDirection::CounterClockwise : RotationDirection::Clockwise;
 
     ImGui::TextUnformatted("Measurement convention");
     ImGui::SameLine();
-    const bool measurement_is_with = measurement_convention_ == MeasurementConvention::WithRotation;
-    if (ImGui::RadioButton("With rotation##measurement_convention", measurement_is_with)) {
-        measurement_convention_ = MeasurementConvention::WithRotation;
-    }
-    ImGui::SameLine();
-    if (ImGui::RadioButton("Against rotation##measurement_convention", !measurement_is_with)) {
-        measurement_convention_ = MeasurementConvention::AgainstRotation;
-    }
+    const bool measurement_is_with = draw_binary_radio(
+        "With rotation##measurement_convention", "Against rotation##measurement_convention",
+        measurement_convention_ == MeasurementConvention::WithRotation);
+    measurement_convention_ = measurement_is_with ? MeasurementConvention::WithRotation
+                                                  : MeasurementConvention::AgainstRotation;
 
     ImGui::Spacing();
     ImGui::Checkbox("Show A + B", &show_sum_);
@@ -141,15 +151,10 @@ void App::draw_controls() {
     ImGui::Spacing();
     ImGui::TextUnformatted("Tip marker style");
     ImGui::SameLine();
-    const bool is_dot = marker_style_ == polarplot::TipMarkerStyle::kDot;
-    if (ImGui::RadioButton("Dot", is_dot)) {
-        marker_style_ = polarplot::TipMarkerStyle::kDot;
-    }
-    ImGui::SameLine();
-    const bool is_crosshair = marker_style_ == polarplot::TipMarkerStyle::kCrossHair;
-    if (ImGui::RadioButton("Cross-hair", is_crosshair)) {
-        marker_style_ = polarplot::TipMarkerStyle::kCrossHair;
-    }
+    const bool is_dot =
+        draw_binary_radio("Dot", "Cross-hair", marker_style_ == polarplot::TipMarkerStyle::kDot);
+    marker_style_ =
+        is_dot ? polarplot::TipMarkerStyle::kDot : polarplot::TipMarkerStyle::kCrossHair;
 
     const vecmath::Vec2 a = to_vec(a_.xy);
     const vecmath::Vec2 b = to_vec(b_.xy);
