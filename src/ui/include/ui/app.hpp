@@ -39,6 +39,7 @@ private:
     VectorInput b_{{-1.0F, 2.0F}};
     bool show_sum_{false};
     bool show_difference_{true};
+    bool show_tip_to_tail_{false};
 
     void draw_controls();
     void draw_plot() const;

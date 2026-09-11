@@ -23,3 +23,22 @@ if(NOT MSVC)
 endif()
 
 catch_discover_tests(vector_math_tests)
+
+add_executable(ui_tests
+    construction_tests.cpp)
+
+target_link_libraries(ui_tests
+    PRIVATE
+        polar_plotter::ui
+        polar_plotter::vector_math
+        polar_plotter::warnings
+        Catch2::Catch2WithMain)
+
+target_compile_features(ui_tests PRIVATE cxx_std_23)
+
+if(NOT MSVC)
+    set_source_files_properties(construction_tests.cpp PROPERTIES
+        COMPILE_OPTIONS "-Wno-unknown-warning-option;-Wno-c2y-extensions")
+endif()
+
+catch_discover_tests(ui_tests)
