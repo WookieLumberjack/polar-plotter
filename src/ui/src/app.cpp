@@ -1,5 +1,6 @@
 #include "ui/app.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <numbers>
 #include <utility>
@@ -9,6 +10,8 @@
 
 #include "polar_plotting/polar_plot.hpp"
 #include "ui/config.hpp"
+#include "ui/construction.hpp"
+#include "ui/zero_direction.hpp"
 #include "vector_math/vec2.hpp"
 
 namespace ui {
@@ -20,7 +23,28 @@ vecmath::Vec2 to_vec(const std::array<float, 2>& xy) {
 
 polarplot::Point to_point(vecmath::Vec2 v) { return {v.x, v.y}; }
 
+polarplot::AnnotationVector to_annotation(const ConstructionVector& construction) {
+    return {to_point(construction.start), to_point(construction.vector)};
+}
+
 constexpr double kRadToDeg = 180.0 / std::numbers::pi;
+constexpr double kDegToRad = std::numbers::pi / 180.0;
+
+// Draw a pair of mutually-exclusive radio buttons on the same line (\p
+// label_a first, then \p label_b) and return the updated "is \p label_a
+// selected" state. Caller supplies the current state via \p is_a; widget IDs
+// are exactly \p label_a / \p label_b, so behavior/labels are unchanged from
+// writing the pair out longhand.
+bool draw_binary_radio(const char* label_a, const char* label_b, bool is_a) {
+    if (ImGui::RadioButton(label_a, is_a)) {
+        is_a = true;
+    }
+    ImGui::SameLine();
+    if (ImGui::RadioButton(label_b, !is_a)) {
+        is_a = false;
+    }
+    return is_a;
+}
 
 }  // namespace
 
@@ -75,9 +99,62 @@ void App::draw_controls() {
     ImGui::InputFloat2("B (x, y)", b_.xy.data(), "%.3f");
 
     ImGui::Spacing();
+    ImGui::InputFloat("Zero direction (deg)", &zero_direction_deg_, 1.0F, 10.0F, "%.2f");
+    bool zero_direction_focused = ImGui::IsItemFocused();
+
+    PlainZeroDirection plain = raw_to_plain_zero_direction(zero_direction_deg_);
+    int side_index = plain.side == ZeroDirectionSide::kLeft ? 0 : 1;
+    bool plain_changed = false;
+
+    ImGui::PushID("zero_direction_plain");
+    ImGui::TextUnformatted("Zero direction, plain language:");
+    plain_changed |= ImGui::Combo("Side", &side_index, "left\0right\0\0");
+    zero_direction_focused |= ImGui::IsItemFocused();
+    plain_changed |= ImGui::InputFloat("deg of top", &plain.degrees_from_top, 1.0F, 10.0F, "%.2f");
+    zero_direction_focused |= ImGui::IsItemFocused();
+    ImGui::PopID();
+
+    if (plain_changed) {
+        plain.side = side_index == 0 ? ZeroDirectionSide::kLeft : ZeroDirectionSide::kRight;
+        plain.degrees_from_top = std::clamp(plain.degrees_from_top, 0.0F, 180.0F);
+        zero_direction_deg_ = plain_to_raw_zero_direction(plain);
+    }
+
+    zero_direction_input_focused_ = zero_direction_focused;
+
+    ImGui::Checkbox("Keep zero-direction arc visible", &show_zero_direction_arc_persistent_);
+
+    ImGui::Spacing();
+    ImGui::TextUnformatted("Rotation direction");
+    ImGui::SameLine();
+    const bool rotation_is_ccw =
+        draw_binary_radio("CCW##rotation_direction", "CW##rotation_direction",
+                          rotation_direction_ == RotationDirection::CounterClockwise);
+    rotation_direction_ =
+        rotation_is_ccw ? RotationDirection::CounterClockwise : RotationDirection::Clockwise;
+
+    ImGui::TextUnformatted("Measurement convention");
+    ImGui::SameLine();
+    const bool measurement_is_with = draw_binary_radio(
+        "With rotation##measurement_convention", "Against rotation##measurement_convention",
+        measurement_convention_ == MeasurementConvention::WithRotation);
+    measurement_convention_ = measurement_is_with ? MeasurementConvention::WithRotation
+                                                  : MeasurementConvention::AgainstRotation;
+
+    ImGui::Spacing();
     ImGui::Checkbox("Show A + B", &show_sum_);
     ImGui::SameLine();
     ImGui::Checkbox("Show A - B", &show_difference_);
+    ImGui::Checkbox("Show tip-to-tail construction", &show_tip_to_tail_);
+    ImGui::Checkbox("Show difference segment", &show_difference_segment_);
+
+    ImGui::Spacing();
+    ImGui::TextUnformatted("Tip marker style");
+    ImGui::SameLine();
+    const bool is_dot =
+        draw_binary_radio("Dot", "Cross-hair", marker_style_ == polarplot::TipMarkerStyle::kDot);
+    marker_style_ =
+        is_dot ? polarplot::TipMarkerStyle::kDot : polarplot::TipMarkerStyle::kCrossHair;
 
     const vecmath::Vec2 a = to_vec(a_.xy);
     const vecmath::Vec2 b = to_vec(b_.xy);
@@ -106,17 +183,42 @@ void App::draw_plot() const {
     }
     extent *= 1.2;
 
+    const polarplot::AngleConvention convention{
+        .zero_direction = static_cast<double>(zero_direction_deg_) * kDegToRad,
+        .angle_sign = compose_angle_sign(rotation_direction_, measurement_convention_),
+    };
+
     if (!polarplot::begin_vector_plot("##polar", extent)) {
         return;
     }
-    polarplot::draw_polar_grid(extent);
-    polarplot::draw_vector("A", to_point(a));
-    polarplot::draw_vector("B", to_point(b));
+    polarplot::draw_polar_grid(extent, convention);
+    polarplot::draw_vector("A", to_point(a), convention, marker_style_);
+    polarplot::draw_vector("B", to_point(b), convention, marker_style_);
     if (show_difference_) {
-        polarplot::draw_vector("A - B", to_point(diff));
+        polarplot::draw_vector("A - B", to_point(diff), convention, marker_style_);
+        if (show_tip_to_tail_) {
+            const ConstructionVector construction = tip_to_tail_difference(a, b);
+            polarplot::draw_annotation_vector("diff_neg_b_from_a_tip", to_annotation(construction),
+                                              convention);
+        }
+        if (show_difference_segment_) {
+            const ConstructionVector segment = difference_segment(a, b);
+            polarplot::draw_annotation_vector("diff_segment_b_to_a_tip", to_annotation(segment),
+                                              convention);
+        }
     }
     if (show_sum_) {
-        polarplot::draw_vector("A + B", to_point(sum));
+        polarplot::draw_vector("A + B", to_point(sum), convention, marker_style_);
+        if (show_tip_to_tail_) {
+            const SumConstruction construction = tip_to_tail_sum(a, b);
+            polarplot::draw_annotation_vector("sum_b_from_a_tip",
+                                              to_annotation(construction.b_from_a_tip), convention);
+            polarplot::draw_annotation_vector("sum_a_from_b_tip",
+                                              to_annotation(construction.a_from_b_tip), convention);
+        }
+    }
+    if (zero_direction_input_focused_ || show_zero_direction_arc_persistent_) {
+        polarplot::draw_angle_arc(extent * 0.85, convention.zero_direction);
     }
     polarplot::end_vector_plot();
 }

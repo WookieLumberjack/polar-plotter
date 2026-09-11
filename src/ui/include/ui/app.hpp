@@ -4,6 +4,9 @@
 #include <array>
 #include <filesystem>
 
+#include "polar_plotting/polar_plot.hpp"
+#include "ui/angle_convention.hpp"
+
 namespace ui {
 
 /// The application's UI state and per-frame rendering. Owns no windowing or
@@ -39,6 +42,27 @@ private:
     VectorInput b_{{-1.0F, 2.0F}};
     bool show_sum_{false};
     bool show_difference_{true};
+    bool show_tip_to_tail_{false};
+    bool show_difference_segment_{false};
+    // Raw zero-direction angle, in degrees, as entered by the user.
+    float zero_direction_deg_{0.0F};
+    // The two independent toggles that compose into polar_plotting's
+    // angle_sign (see ui/angle_convention.hpp). Defaults reproduce the
+    // previously-fixed +1 (counterclockwise, with rotation).
+    RotationDirection rotation_direction_{RotationDirection::CounterClockwise};
+    MeasurementConvention measurement_convention_{MeasurementConvention::WithRotation};
+    // Set fresh each frame in draw_controls() -- true while either the raw
+    // zero-direction input or the plain-language ("N deg left/right of top")
+    // input has ImGui focus; draw_plot() reads it to decide whether to draw
+    // the transient zero-direction angle arc this frame.
+    bool zero_direction_input_focused_{false};
+    // Independent, persistent lifecycle for the zero-direction angle arc:
+    // when true, draw_plot() draws the arc every frame regardless of input
+    // focus (in addition to the transient, focus-driven display above).
+    bool show_zero_direction_arc_persistent_{false};
+    // Plot-wide tip marker style, shared by every named vector (A, B, A+B,
+    // A-B) -- there is no per-vector styling.
+    polarplot::TipMarkerStyle marker_style_{polarplot::TipMarkerStyle::kDot};
 
     void draw_controls();
     void draw_plot() const;

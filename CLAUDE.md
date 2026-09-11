@@ -82,3 +82,17 @@ Each module is `src/<name>/{include/<name>/*.hpp, src/*.cpp}` with its own
 Targets Linux, Windows (MSYS2 `clang64`), and macOS, all with Clang. Keep
 platform branches in `app/` and the CMake dependency layer; modules stay
 platform-agnostic.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live as GitHub issues in `WookieLumberjack/polar-plotter`, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five canonical labels (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
