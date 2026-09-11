@@ -38,13 +38,21 @@ void apply(Config& cfg, std::string_view key, std::string_view value) {
     const auto as_bool = [](std::string_view v) { return v == "1" || v == "true"; };
 
     if (key == "a.x") {
-        if (const auto v = parse_float(value)) { cfg.a[0] = *v; }
+        if (const auto v = parse_float(value)) {
+            cfg.a[0] = *v;
+        }
     } else if (key == "a.y") {
-        if (const auto v = parse_float(value)) { cfg.a[1] = *v; }
+        if (const auto v = parse_float(value)) {
+            cfg.a[1] = *v;
+        }
     } else if (key == "b.x") {
-        if (const auto v = parse_float(value)) { cfg.b[0] = *v; }
+        if (const auto v = parse_float(value)) {
+            cfg.b[0] = *v;
+        }
     } else if (key == "b.y") {
-        if (const auto v = parse_float(value)) { cfg.b[1] = *v; }
+        if (const auto v = parse_float(value)) {
+            cfg.b[1] = *v;
+        }
     } else if (key == "show_sum") {
         cfg.show_sum = as_bool(value);
     } else if (key == "show_difference") {

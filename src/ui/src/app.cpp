@@ -46,10 +46,22 @@ void App::save() const {
 }
 
 void App::render() {
+    // A simple side-by-side default layout; the user can move/resize freely and
+    // ImGui remembers it in imgui.ini afterwards.
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    const float pad = 16.0F;
+    const float controls_w = 380.0F;
+
+    ImGui::SetNextWindowPos({vp->WorkPos.x + pad, vp->WorkPos.y + pad}, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize({controls_w, vp->WorkSize.y - (2 * pad)}, ImGuiCond_FirstUseEver);
     ImGui::Begin("Vectors");
     draw_controls();
     ImGui::End();
 
+    ImGui::SetNextWindowPos({vp->WorkPos.x + controls_w + (2 * pad), vp->WorkPos.y + pad},
+                            ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize({vp->WorkSize.x - controls_w - (3 * pad), vp->WorkSize.y - (2 * pad)},
+                             ImGuiCond_FirstUseEver);
     ImGui::Begin("Polar plot");
     draw_plot();
     ImGui::End();
