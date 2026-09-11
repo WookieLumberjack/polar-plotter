@@ -1,10 +1,10 @@
-#include "vector_math/vec2.hpp"
-
 #include <cmath>
 #include <numbers>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+
+#include "vector_math/vec2.hpp"
 
 using Catch::Matchers::WithinAbs;
 using Catch::Matchers::WithinRel;
