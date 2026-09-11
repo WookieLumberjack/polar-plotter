@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <numbers>
+#include <string>
 #include <utility>
 
 #include <imgui.h>
@@ -10,7 +12,7 @@
 
 #include "polar_plotting/polar_plot.hpp"
 #include "ui/config.hpp"
-#include "ui/construction.hpp"
+#include "ui/plot_plan.hpp"
 #include "ui/zero_direction.hpp"
 #include "vector_math/vec2.hpp"
 
@@ -21,14 +23,7 @@ vecmath::Vec2 to_vec(const std::array<float, 2>& xy) {
     return {static_cast<double>(xy[0]), static_cast<double>(xy[1])};
 }
 
-polarplot::Point to_point(vecmath::Vec2 v) { return {v.x, v.y}; }
-
-polarplot::AnnotationVector to_annotation(const ConstructionVector& construction) {
-    return {to_point(construction.start), to_point(construction.vector)};
-}
-
 constexpr double kRadToDeg = 180.0 / std::numbers::pi;
-constexpr double kDegToRad = std::numbers::pi / 180.0;
 
 // Draw a pair of mutually-exclusive radio buttons on the same line (\p
 // label_a first, then \p label_b) and return the updated "is \p label_a
@@ -174,51 +169,55 @@ void App::draw_controls() {
 void App::draw_plot() const {
     const vecmath::Vec2 a = to_vec(a_.xy);
     const vecmath::Vec2 b = to_vec(b_.xy);
-    const vecmath::Vec2 diff = a - b;
-    const vecmath::Vec2 sum = a + b;
+
+    const PlotPlan plan = plan_plot(PlotInputs{
+        .a = a,
+        .b = b,
+        .show_sum = show_sum_,
+        .show_difference = show_difference_,
+        .show_tip_to_tail = show_tip_to_tail_,
+        .show_difference_segment = show_difference_segment_,
+        .marker_style = marker_style_,
+        .zero_direction_deg = static_cast<double>(zero_direction_deg_),
+        .rotation_direction = rotation_direction_,
+        .measurement_convention = measurement_convention_,
+        .zero_direction_input_focused = zero_direction_input_focused_,
+        .show_zero_direction_arc_persistent = show_zero_direction_arc_persistent_,
+    });
 
     double extent = 1.0;
-    for (const vecmath::Vec2 v : {a, b, diff, sum}) {
+    for (const vecmath::Vec2 v : {a, b, a + b, a - b}) {
         extent = std::max(extent, vecmath::magnitude(v));
     }
     extent *= 1.2;
 
-    const polarplot::AngleConvention convention{
-        .zero_direction = static_cast<double>(zero_direction_deg_) * kDegToRad,
-        .angle_sign = compose_angle_sign(rotation_direction_, measurement_convention_),
-    };
-
     if (!polarplot::begin_vector_plot("##polar", extent)) {
         return;
     }
-    polarplot::draw_polar_grid(extent, convention);
-    polarplot::draw_vector("A", to_point(a), convention, marker_style_);
-    polarplot::draw_vector("B", to_point(b), convention, marker_style_);
-    if (show_difference_) {
-        polarplot::draw_vector("A - B", to_point(diff), convention, marker_style_);
-        if (show_tip_to_tail_) {
-            const ConstructionVector construction = tip_to_tail_difference(a, b);
-            polarplot::draw_annotation_vector("diff_neg_b_from_a_tip", to_annotation(construction),
-                                              convention);
-        }
-        if (show_difference_segment_) {
-            const ConstructionVector segment = difference_segment(a, b);
-            polarplot::draw_annotation_vector("diff_segment_b_to_a_tip", to_annotation(segment),
-                                              convention);
-        }
+    polarplot::draw_polar_grid(extent, plan.convention);
+    polarplot::draw_vector("A", plan.a, plan.convention, marker_style_);
+    polarplot::draw_vector("B", plan.b, plan.convention, marker_style_);
+    if (plan.difference) {
+        polarplot::draw_vector("A - B", *plan.difference, plan.convention, marker_style_);
     }
-    if (show_sum_) {
-        polarplot::draw_vector("A + B", to_point(sum), convention, marker_style_);
-        if (show_tip_to_tail_) {
-            const SumConstruction construction = tip_to_tail_sum(a, b);
-            polarplot::draw_annotation_vector("sum_b_from_a_tip",
-                                              to_annotation(construction.b_from_a_tip), convention);
-            polarplot::draw_annotation_vector("sum_a_from_b_tip",
-                                              to_annotation(construction.a_from_b_tip), convention);
-        }
+    if (plan.sum) {
+        polarplot::draw_vector("A + B", *plan.sum, plan.convention, marker_style_);
     }
-    if (zero_direction_input_focused_ || show_zero_direction_arc_persistent_) {
-        polarplot::draw_angle_arc(extent * 0.85, convention.zero_direction);
+    // Positional ids: fine because draw_annotation_vector's id is never shown
+    // (see polar_plot.hpp), only needs to be unique per frame, and
+    // PlotPlan::tip_to_tail_annotations' push order is a documented contract
+    // (see plot_plan.cpp) -- not derived from branching here.
+    for (std::size_t i = 0; i < plan.tip_to_tail_annotations.size(); ++i) {
+        const std::string id = "tip_to_tail_" + std::to_string(i);
+        polarplot::draw_annotation_vector(id.c_str(), plan.tip_to_tail_annotations[i],
+                                          plan.convention);
+    }
+    if (plan.difference_segment) {
+        polarplot::draw_annotation_vector("diff_segment_b_to_a_tip", *plan.difference_segment,
+                                          plan.convention);
+    }
+    if (plan.zero_direction_arc_angle) {
+        polarplot::draw_angle_arc(extent * 0.85, *plan.zero_direction_arc_angle);
     }
     polarplot::end_vector_plot();
 }
