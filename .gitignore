@@ -17,3 +17,7 @@ CLAUDE.local.md
 # App-written config (only produced at runtime)
 *.conf
 imgui.ini
+
+# Working research material (textbook photos, reference snapshots) -- not
+# for version control, personal/copyrighted source images.
+/research/
