@@ -23,10 +23,6 @@ polarplot::Point to_point(vecmath::Vec2 v) { return {v.x, v.y}; }
 constexpr double kRadToDeg = 180.0 / std::numbers::pi;
 constexpr double kDegToRad = std::numbers::pi / 180.0;
 
-// angle_sign stays fixed at today's default (+1, counterclockwise) until the
-// rotation-direction / measurement-convention toggles land in a later ticket.
-constexpr double kDefaultAngleSign = 1.0;
-
 }  // namespace
 
 App::App() = default;
@@ -83,6 +79,29 @@ void App::draw_controls() {
     ImGui::InputFloat("Zero direction (deg)", &zero_direction_deg_, 1.0F, 10.0F, "%.2f");
 
     ImGui::Spacing();
+    ImGui::TextUnformatted("Rotation direction");
+    ImGui::SameLine();
+    const bool rotation_is_ccw = rotation_direction_ == RotationDirection::CounterClockwise;
+    if (ImGui::RadioButton("CCW##rotation_direction", rotation_is_ccw)) {
+        rotation_direction_ = RotationDirection::CounterClockwise;
+    }
+    ImGui::SameLine();
+    if (ImGui::RadioButton("CW##rotation_direction", !rotation_is_ccw)) {
+        rotation_direction_ = RotationDirection::Clockwise;
+    }
+
+    ImGui::TextUnformatted("Measurement convention");
+    ImGui::SameLine();
+    const bool measurement_is_with = measurement_convention_ == MeasurementConvention::WithRotation;
+    if (ImGui::RadioButton("With rotation##measurement_convention", measurement_is_with)) {
+        measurement_convention_ = MeasurementConvention::WithRotation;
+    }
+    ImGui::SameLine();
+    if (ImGui::RadioButton("Against rotation##measurement_convention", !measurement_is_with)) {
+        measurement_convention_ = MeasurementConvention::AgainstRotation;
+    }
+
+    ImGui::Spacing();
     ImGui::Checkbox("Show A + B", &show_sum_);
     ImGui::SameLine();
     ImGui::Checkbox("Show A - B", &show_difference_);
@@ -116,7 +135,7 @@ void App::draw_plot() const {
 
     const polarplot::AngleConvention convention{
         .zero_direction = static_cast<double>(zero_direction_deg_) * kDegToRad,
-        .angle_sign = kDefaultAngleSign,
+        .angle_sign = compose_angle_sign(rotation_direction_, measurement_convention_),
     };
 
     if (!polarplot::begin_vector_plot("##polar", extent)) {

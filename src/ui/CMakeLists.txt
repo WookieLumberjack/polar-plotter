@@ -1,4 +1,5 @@
 add_library(ui STATIC
+    src/angle_convention.cpp
     src/app.cpp
     src/config.cpp)
 
