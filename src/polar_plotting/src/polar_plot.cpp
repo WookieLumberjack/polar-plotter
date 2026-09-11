@@ -137,8 +137,37 @@ void draw_arrow(const char* label, Point tail, Point head, AngleConvention conve
     plot_arrow_shape(label, head_id, ptail, phead, head_frac, /*line_color=*/nullptr);
 }
 
-void draw_vector(const char* label, Point head, AngleConvention convention, double head_frac) {
+namespace {
+
+// Tip marker/label styling. Fixed constants -- exact pixel sizes are left to
+// implementation time per the spec.
+constexpr float kMarkerSize = 6.0F;
+constexpr ImVec2 kLabelPixelOffset{8.0F, -8.0F};
+constexpr ImVec4 kTipColor{0.9F, 0.9F, 0.9F, 1.0F};
+
+void draw_tip_marker(const char* label, Point tip, TipMarkerStyle marker_style) {
+    const std::string id = std::string("##tip_") + label;
+    const ImPlotMarker marker =
+        (marker_style == TipMarkerStyle::kCrossHair) ? ImPlotMarker_Cross : ImPlotMarker_Circle;
+    const ImPlotSpec spec{
+        ImPlotProp_Marker,          marker,    ImPlotProp_MarkerSize,      kMarkerSize,
+        ImPlotProp_MarkerFillColor, kTipColor, ImPlotProp_MarkerLineColor, kTipColor};
+    ImPlot::PlotScatter(id.c_str(), &tip.x, &tip.y, 1, spec);
+}
+
+void draw_tip_label(const char* label, Point tip) {
+    ImPlot::Annotation(tip.x, tip.y, kTipColor, kLabelPixelOffset, false, "%s", label);
+}
+
+}  // namespace
+
+void draw_vector(const char* label, Point head, AngleConvention convention,
+                 TipMarkerStyle marker_style, double head_frac) {
     draw_arrow(label, Point{0.0, 0.0}, head, convention, head_frac);
+
+    const Point tip = to_plotted_point(head, convention);
+    draw_tip_marker(label, tip, marker_style);
+    draw_tip_label(label, tip);
 }
 
 void draw_annotation_vector(const char* id, AnnotationVector annotation, AngleConvention convention,

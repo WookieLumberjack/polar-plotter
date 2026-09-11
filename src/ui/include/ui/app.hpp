@@ -4,6 +4,7 @@
 #include <array>
 #include <filesystem>
 
+#include "polar_plotting/polar_plot.hpp"
 #include "ui/angle_convention.hpp"
 
 namespace ui {
@@ -54,6 +55,9 @@ private:
     // input has ImGui focus; draw_plot() reads it to decide whether to draw
     // the transient zero-direction angle arc this frame.
     bool zero_direction_input_focused_{false};
+    // Plot-wide tip marker style, shared by every named vector (A, B, A+B,
+    // A-B) -- there is no per-vector styling.
+    polarplot::TipMarkerStyle marker_style_{polarplot::TipMarkerStyle::kDot};
 
     void draw_controls();
     void draw_plot() const;
