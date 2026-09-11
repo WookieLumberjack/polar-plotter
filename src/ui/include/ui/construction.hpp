@@ -46,6 +46,14 @@ struct SumConstruction {
     return ConstructionVector{.start = a, .vector = -b};
 }
 
+/// The difference segment for `a - b`: the free vector from `b`'s tip to
+/// `a`'s tip. Congruent to `a - b` itself, but drawn where the two source
+/// vectors actually are rather than at the origin. Degenerates to a
+/// zero-length segment at `a` when `a == b`.
+[[nodiscard]] constexpr ConstructionVector difference_segment(vecmath::Vec2 a, vecmath::Vec2 b) {
+    return ConstructionVector{.start = b, .vector = a - b};
+}
+
 }  // namespace ui
 
 #endif  // UI_CONSTRUCTION_HPP

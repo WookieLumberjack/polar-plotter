@@ -134,6 +134,7 @@ void App::draw_controls() {
     ImGui::SameLine();
     ImGui::Checkbox("Show A - B", &show_difference_);
     ImGui::Checkbox("Show tip-to-tail construction", &show_tip_to_tail_);
+    ImGui::Checkbox("Show difference segment", &show_difference_segment_);
 
     ImGui::Spacing();
     ImGui::TextUnformatted("Tip marker style");
@@ -191,6 +192,11 @@ void App::draw_plot() const {
         if (show_tip_to_tail_) {
             const ConstructionVector construction = tip_to_tail_difference(a, b);
             polarplot::draw_annotation_vector("diff_neg_b_from_a_tip", to_annotation(construction),
+                                              convention);
+        }
+        if (show_difference_segment_) {
+            const ConstructionVector segment = difference_segment(a, b);
+            polarplot::draw_annotation_vector("diff_segment_b_to_a_tip", to_annotation(segment),
                                               convention);
         }
     }

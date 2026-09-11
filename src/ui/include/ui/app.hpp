@@ -43,6 +43,7 @@ private:
     bool show_sum_{false};
     bool show_difference_{true};
     bool show_tip_to_tail_{false};
+    bool show_difference_segment_{false};
     // Raw zero-direction angle, in degrees, as entered by the user.
     float zero_direction_deg_{0.0F};
     // The two independent toggles that compose into polar_plotting's

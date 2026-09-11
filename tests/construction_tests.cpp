@@ -64,3 +64,27 @@ TEST_CASE("tip_to_tail_difference handles the degenerate a == b case", "[constru
     // there rather than producing a NaN/degenerate arrow.
     STATIC_REQUIRE(construction.start + construction.vector == Vec2{0.0, 0.0});
 }
+
+TEST_CASE("difference_segment connects b's tip to a's tip", "[construction]") {
+    constexpr Vec2 a{5.0, 2.0};
+    constexpr Vec2 b{1.0, 3.0};
+
+    constexpr ConstructionVector segment = ui::difference_segment(a, b);
+
+    STATIC_REQUIRE(segment.start == b);
+    STATIC_REQUIRE(segment.vector == a - b);
+
+    SECTION("arrives at a's tip") { STATIC_REQUIRE(segment.start + segment.vector == a); }
+
+    SECTION("is congruent to a - b") { STATIC_REQUIRE(segment.vector == a - b); }
+}
+
+TEST_CASE("difference_segment handles the degenerate a == b case", "[construction]") {
+    constexpr Vec2 a{7.0, -3.0};
+
+    constexpr ConstructionVector segment = ui::difference_segment(a, a);
+
+    STATIC_REQUIRE(segment.start == a);
+    STATIC_REQUIRE(segment.vector == Vec2{0.0, 0.0});
+    STATIC_REQUIRE(segment.start + segment.vector == a);
+}
