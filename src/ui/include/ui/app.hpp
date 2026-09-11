@@ -4,6 +4,8 @@
 #include <array>
 #include <filesystem>
 
+#include "polar_plotting/polar_plot.hpp"
+
 namespace ui {
 
 /// The application's UI state and per-frame rendering. Owns no windowing or
@@ -44,6 +46,9 @@ private:
     // rotation-direction / measurement-convention toggles that would let the
     // user change it are a later ticket.
     float zero_direction_deg_{0.0F};
+    // Plot-wide tip marker style, shared by every named vector (A, B, A+B,
+    // A-B) -- there is no per-vector styling.
+    polarplot::TipMarkerStyle marker_style_{polarplot::TipMarkerStyle::kDot};
 
     void draw_controls();
     void draw_plot() const;

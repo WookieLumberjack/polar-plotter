@@ -87,6 +87,19 @@ void App::draw_controls() {
     ImGui::SameLine();
     ImGui::Checkbox("Show A - B", &show_difference_);
 
+    ImGui::Spacing();
+    ImGui::TextUnformatted("Tip marker style");
+    ImGui::SameLine();
+    const bool is_dot = marker_style_ == polarplot::TipMarkerStyle::kDot;
+    if (ImGui::RadioButton("Dot", is_dot)) {
+        marker_style_ = polarplot::TipMarkerStyle::kDot;
+    }
+    ImGui::SameLine();
+    const bool is_crosshair = marker_style_ == polarplot::TipMarkerStyle::kCrossHair;
+    if (ImGui::RadioButton("Cross-hair", is_crosshair)) {
+        marker_style_ = polarplot::TipMarkerStyle::kCrossHair;
+    }
+
     const vecmath::Vec2 a = to_vec(a_.xy);
     const vecmath::Vec2 b = to_vec(b_.xy);
     const vecmath::Polar pa = vecmath::to_polar(a);
@@ -123,13 +136,13 @@ void App::draw_plot() const {
         return;
     }
     polarplot::draw_polar_grid(extent, convention);
-    polarplot::draw_vector("A", to_point(a), convention);
-    polarplot::draw_vector("B", to_point(b), convention);
+    polarplot::draw_vector("A", to_point(a), convention, marker_style_);
+    polarplot::draw_vector("B", to_point(b), convention, marker_style_);
     if (show_difference_) {
-        polarplot::draw_vector("A - B", to_point(diff), convention);
+        polarplot::draw_vector("A - B", to_point(diff), convention, marker_style_);
     }
     if (show_sum_) {
-        polarplot::draw_vector("A + B", to_point(sum), convention);
+        polarplot::draw_vector("A + B", to_point(sum), convention, marker_style_);
     }
     polarplot::end_vector_plot();
 }

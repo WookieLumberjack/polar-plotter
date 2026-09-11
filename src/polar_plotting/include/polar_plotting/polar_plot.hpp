@@ -6,6 +6,8 @@
 /// grid. Depends only on Dear ImGui and ImPlot -- deliberately no dependency on
 /// the vector_math module so this can be lifted into another project.
 
+#include <cstdint>
+
 namespace polarplot {
 
 /// A plain point in plot data coordinates.
@@ -48,16 +50,31 @@ void end_vector_plot();
 /// according to \p convention.
 void draw_polar_grid(double max_radius, AngleConvention convention, int rings = 4, int spokes = 12);
 
+/// Style of the tip marker drawn at every named vector's tip. A single value
+/// applies to every named vector on a plot -- there is no per-vector styling.
+enum class TipMarkerStyle : std::uint8_t {
+    kDot,
+    kCrossHair,
+};
+
 /// Draw an arrow (shaft + head) from \p tail to \p head, labelled \p label.
 /// \p tail and \p head are given in math convention and remapped via
 /// \p convention before drawing. \p head_frac is the arrowhead length as a
-/// fraction of the shaft length.
+/// fraction of the shaft length. This is the bare drawing primitive -- it
+/// carries no tip marker or tip label; use \ref draw_vector for a named
+/// vector, which always gets both.
 void draw_arrow(const char* label, Point tail, Point head, AngleConvention convention,
                 double head_frac = 0.12);
 
-/// Convenience: an arrow from the origin to \p head.
+/// Draw a named vector: an arrow from the origin to \p head, plus a tip
+/// marker (styled per \p marker_style) and a tip label showing \p label,
+/// both drawn unconditionally -- even when \p head is exactly the origin, in
+/// which case the marker and label sit at the origin. This is what makes a
+/// vector a "named vector" as opposed to a bare annotation arrow drawn via
+/// \ref draw_arrow directly; \c polar_plotting has no notion of *why* a
+/// vector is named, only that this entry point always marks and labels it.
 void draw_vector(const char* label, Point head, AngleConvention convention,
-                 double head_frac = 0.12);
+                 TipMarkerStyle marker_style, double head_frac = 0.12);
 
 }  // namespace polarplot
 
