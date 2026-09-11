@@ -9,6 +9,7 @@
 
 #include "polar_plotting/polar_plot.hpp"
 #include "ui/config.hpp"
+#include "ui/construction.hpp"
 #include "vector_math/vec2.hpp"
 
 namespace ui {
@@ -19,6 +20,10 @@ vecmath::Vec2 to_vec(const std::array<float, 2>& xy) {
 }
 
 polarplot::Point to_point(vecmath::Vec2 v) { return {v.x, v.y}; }
+
+polarplot::AnnotationVector to_annotation(const ConstructionVector& construction) {
+    return {to_point(construction.start), to_point(construction.vector)};
+}
 
 constexpr double kRadToDeg = 180.0 / std::numbers::pi;
 constexpr double kDegToRad = std::numbers::pi / 180.0;
@@ -105,6 +110,7 @@ void App::draw_controls() {
     ImGui::Checkbox("Show A + B", &show_sum_);
     ImGui::SameLine();
     ImGui::Checkbox("Show A - B", &show_difference_);
+    ImGui::Checkbox("Show tip-to-tail construction", &show_tip_to_tail_);
 
     const vecmath::Vec2 a = to_vec(a_.xy);
     const vecmath::Vec2 b = to_vec(b_.xy);
@@ -146,9 +152,21 @@ void App::draw_plot() const {
     polarplot::draw_vector("B", to_point(b), convention);
     if (show_difference_) {
         polarplot::draw_vector("A - B", to_point(diff), convention);
+        if (show_tip_to_tail_) {
+            const ConstructionVector construction = tip_to_tail_difference(a, b);
+            polarplot::draw_annotation_vector("diff_neg_b_from_a_tip", to_annotation(construction),
+                                              convention);
+        }
     }
     if (show_sum_) {
         polarplot::draw_vector("A + B", to_point(sum), convention);
+        if (show_tip_to_tail_) {
+            const SumConstruction construction = tip_to_tail_sum(a, b);
+            polarplot::draw_annotation_vector("sum_b_from_a_tip",
+                                              to_annotation(construction.b_from_a_tip), convention);
+            polarplot::draw_annotation_vector("sum_a_from_b_tip",
+                                              to_annotation(construction.a_from_b_tip), convention);
+        }
     }
     polarplot::end_vector_plot();
 }

@@ -44,11 +44,13 @@ endif()
 catch_discover_tests(polar_plotting_tests)
 
 add_executable(ui_tests
-    ui_angle_convention_tests.cpp)
+    ui_angle_convention_tests.cpp
+    construction_tests.cpp)
 
 target_link_libraries(ui_tests
     PRIVATE
         polar_plotter::ui
+        polar_plotter::vector_math
         polar_plotter::warnings
         Catch2::Catch2WithMain)
 
@@ -56,7 +58,7 @@ target_compile_features(ui_tests PRIVATE cxx_std_23)
 
 # See the comment above vec2_tests.cpp's identical suppression.
 if(NOT MSVC)
-    set_source_files_properties(ui_angle_convention_tests.cpp PROPERTIES
+    set_source_files_properties(ui_angle_convention_tests.cpp construction_tests.cpp PROPERTIES
         COMPILE_OPTIONS "-Wno-unknown-warning-option;-Wno-c2y-extensions")
 endif()
 

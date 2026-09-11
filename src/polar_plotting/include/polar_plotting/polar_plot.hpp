@@ -59,6 +59,27 @@ void draw_arrow(const char* label, Point tail, Point head, AngleConvention conve
 void draw_vector(const char* label, Point head, AngleConvention convention,
                  double head_frac = 0.12);
 
+/// A free-vector annotation: an arrow beginning at an explicit \p start point
+/// (never assumed to originate at the origin) and displaced by \p vector.
+/// \c polar_plotting has no notion of what an annotation vector represents --
+/// callers (e.g. \c ui) pass these in purely to be drawn, for things like a
+/// tip-to-tail construction step.
+struct AnnotationVector {
+    Point start;
+    Point vector;
+};
+
+/// Draw \p annotation as a free-vector arrow, styled distinctly from a named
+/// vector (see \ref draw_vector / \ref draw_arrow) and with no tip marker or
+/// label of its own. \p id is an ImPlot item id used only for internal
+/// bookkeeping -- it is never shown as a legend entry or on-plot label --
+/// so pass a value unique among annotations drawn in the same plot this
+/// frame. \p annotation's \c start and \c vector endpoint are given in math
+/// convention and remapped via \p convention before drawing, exactly like
+/// \ref draw_arrow.
+void draw_annotation_vector(const char* id, AnnotationVector annotation, AngleConvention convention,
+                            double head_frac = 0.12);
+
 }  // namespace polarplot
 
 #endif  // POLAR_PLOTTING_POLAR_PLOT_HPP
