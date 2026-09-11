@@ -12,11 +12,6 @@ namespace {
 
 constexpr double kTwoPi = 2.0 * std::numbers::pi;
 
-// Draw a closed poly-line through the given data points.
-void plot_closed_path(const char* id, const double* xs, const double* ys, int n) {
-    ImPlot::PlotLine(id, xs, ys, n, {ImPlotProp_Flags, ImPlotLineFlags_Loop});
-}
-
 }  // namespace
 
 bool begin_vector_plot(const char* title, double extent) {
@@ -31,6 +26,13 @@ bool begin_vector_plot(const char* title, double extent) {
 void end_vector_plot() { ImPlot::EndPlot(); }
 
 void draw_polar_grid(double max_radius, int rings, int spokes) {
+    // One muted, fixed color for the whole grid (no per-ring colormap
+    // cycling); the outermost ring is drawn heavier than the interior rings
+    // and spokes so the plot's boundary reads clearly without a bounding box.
+    constexpr ImVec4 kGridColor{0.5F, 0.5F, 0.5F, 0.5F};
+    constexpr float kInteriorWeight = 1.0F;
+    constexpr float kOuterWeight = 2.5F;
+
     constexpr int kSegments = 96;
     std::array<double, kSegments> cx{};
     std::array<double, kSegments> cy{};
@@ -43,7 +45,10 @@ void draw_polar_grid(double max_radius, int rings, int spokes) {
             cy[static_cast<std::size_t>(i)] = radius * std::sin(t);
         }
         const std::string id = "##ring" + std::to_string(r);
-        plot_closed_path(id.c_str(), cx.data(), cy.data(), kSegments);
+        const float weight = (r == rings) ? kOuterWeight : kInteriorWeight;
+        const ImPlotSpec spec{ImPlotProp_Flags, ImPlotLineFlags_Loop,  ImPlotProp_LineColor,
+                              kGridColor,       ImPlotProp_LineWeight, weight};
+        ImPlot::PlotLine(id.c_str(), cx.data(), cy.data(), kSegments, spec);
     }
 
     for (int s = 0; s < spokes; ++s) {
@@ -51,7 +56,9 @@ void draw_polar_grid(double max_radius, int rings, int spokes) {
         const std::array<double, 2> sx{0.0, max_radius * std::cos(t)};
         const std::array<double, 2> sy{0.0, max_radius * std::sin(t)};
         const std::string id = "##spoke" + std::to_string(s);
-        ImPlot::PlotLine(id.c_str(), sx.data(), sy.data(), 2);
+        const ImPlotSpec spec{ImPlotProp_LineColor, kGridColor, ImPlotProp_LineWeight,
+                              kInteriorWeight};
+        ImPlot::PlotLine(id.c_str(), sx.data(), sy.data(), 2, spec);
     }
 }
 
