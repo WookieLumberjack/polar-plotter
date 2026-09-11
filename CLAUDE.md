@@ -13,7 +13,8 @@ product, angle between) update live. Dear ImGui + ImPlot front end.
 Requires Clang (C++23), CMake ≥ 3.24, Ninja. Dependencies are fetched and pinned
 by `cmake/Dependencies.cmake` (GLFW 3.4, Dear ImGui v1.92.9b, ImPlot v1.0,
 Catch2 v3.7.1) — no system packages beyond a working OpenGL/X11 (Linux)
-toolchain.
+toolchain. GLFW is built X11-only on Linux (see the Wayland note in
+`cmake/Dependencies.cmake`).
 
 ImPlot 1.0 replaced the trailing `flags/offset/stride` params of the `PlotX`
 functions with a single `ImPlotSpec`. `ImPlotSpec` is not an aggregate, so build
@@ -32,6 +33,10 @@ ctest --preset debug          # run the Catch2 suite
 - Run one test: `./build/debug/tests/vector_math_tests "<test name>"` (Catch2),
   or `ctest --preset debug -R <regex>`.
 - `compile_commands.json` is written to the build dir for clang-tidy/editors.
+- Headless screenshot: `POLAR_PLOTTER_SCREENSHOT=out.ppm ./build/.../polar-plotter`
+  renders a few frames to a hidden window and dumps the framebuffer as a PPM,
+  then exits. Under a headless box use `xvfb-run` + `LIBGL_ALWAYS_SOFTWARE=1`;
+  convert with `magick out.ppm out.png`.
 
 ## Warnings & linting
 

@@ -16,10 +16,12 @@ Checks: >
   -cppcoreguidelines-pro-bounds-pointer-arithmetic,
   -cppcoreguidelines-pro-bounds-constant-array-index,
   -cppcoreguidelines-pro-type-vararg,
+  -cppcoreguidelines-pro-type-reinterpret-cast,
   -hicpp-vararg,
   -bugprone-easily-swappable-parameters,
   -modernize-use-trailing-return-type,
   -modernize-use-designated-initializers,
+  -modernize-use-std-print,
   -misc-non-private-member-variables-in-classes,
   -misc-include-cleaner,
   -readability-identifier-length

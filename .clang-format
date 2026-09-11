@@ -9,17 +9,12 @@ DerivePointerAlignment: false
 PointerAlignment: Left
 IncludeBlocks: Regroup
 IncludeCategories:
+  # Standard library: <vector>, <cmath>, ...
   - Regex: '^<[a-z_]+>$'
     Priority: 1
-  - Regex: '^<.*\.h(pp)?>$'
+  # Third-party headers with an extension: <GLFW/glfw3.h>, <imgui.h>, ...
+  - Regex: '^<.*>$'
     Priority: 2
-  - Regex: '^"(imgui|implot|GLFW|catch2)'
+  # First-party module headers.
+  - Regex: '^"'
     Priority: 3
-  - Regex: '^"vector_math/'
-    Priority: 4
-  - Regex: '^"polar_plotting/'
-    Priority: 5
-  - Regex: '^"ui/'
-    Priority: 6
-  - Regex: '.*'
-    Priority: 7

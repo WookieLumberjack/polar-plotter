@@ -16,6 +16,9 @@ target_link_libraries(polar_plotter_app
 
 if(APPLE)
     target_link_libraries(polar_plotter_app PRIVATE "-framework OpenGL")
+    # macOS deprecated the OpenGL API in 10.14; we knowingly use the compat GL 1.1
+    # entry points that Dear ImGui's backend also relies on.
+    target_compile_definitions(polar_plotter_app PRIVATE GL_SILENCE_DEPRECATION)
 elseif(WIN32)
     target_link_libraries(polar_plotter_app PRIVATE opengl32)
 else()

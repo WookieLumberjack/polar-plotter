@@ -13,6 +13,15 @@ set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
 
+# X11 only on Linux for now: the Wayland backend pulls in wayland-scanner and
+# the wayland-protocols toolchain, which isn't worth the CI/setup surface yet.
+# Flip this on (and add the libwayland-dev / wayland-protocols packages) when a
+# native Wayland session actually needs it.
+if(UNIX AND NOT APPLE)
+    set(GLFW_BUILD_WAYLAND OFF CACHE BOOL "" FORCE)
+    set(GLFW_BUILD_X11 ON CACHE BOOL "" FORCE)
+endif()
+
 FetchContent_Declare(glfw
     GIT_REPOSITORY https://github.com/glfw/glfw.git
     GIT_TAG 3.4
