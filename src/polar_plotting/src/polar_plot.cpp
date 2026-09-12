@@ -115,6 +115,20 @@ Point to_plotted_point(Point p, AngleConvention convention) {
     return {radius * std::cos(plotted_angle), radius * std::sin(plotted_angle)};
 }
 
+Point from_plotted_point(Point p, AngleConvention convention) {
+    const double radius = std::hypot(p.x, p.y);
+    if (radius == 0.0) {
+        return {0.0, 0.0};
+    }
+    const double plotted_angle = std::atan2(p.y, p.x);
+    // Inverse of apply_angle_convention's
+    // `plotted = zero_direction + angle_sign * math_angle`: solve for
+    // math_angle. angle_sign is always +-1, so dividing by it is the same as
+    // multiplying by it.
+    const double math_angle = convention.angle_sign * (plotted_angle - convention.zero_direction);
+    return {radius * std::cos(math_angle), radius * std::sin(math_angle)};
+}
+
 std::vector<RulerTick> ruler_ticks(double ring_interval, int ring_count) {
     std::vector<RulerTick> ticks;
     ticks.reserve(static_cast<std::size_t>(ring_count));
