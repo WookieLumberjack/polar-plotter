@@ -40,6 +40,32 @@ struct PlotInputs {
     bool show_zero_direction_arc_persistent{false};
 };
 
+/// Number of concentric rings draw_polar_grid lays the auto-fit view out
+/// over. `PlotExtent::extent` and `::ring_interval` are always related by
+/// `extent == ring_interval * kAutoFitRings`.
+inline constexpr int kAutoFitRings = 4;
+
+/// The auto-fit view geometry for one frame: `extent` is the plot's overall
+/// radius (feed it to begin_vector_plot's axis limits), `ring_interval` is
+/// the spacing between draw_polar_grid's rings. Always related by
+/// `extent == ring_interval * kAutoFitRings` -- see auto_fit_extent.
+struct PlotExtent {
+    double ring_interval{1.0};
+    double extent{static_cast<double>(kAutoFitRings)};
+};
+
+/// Computes this frame's auto-fit extent/ring-interval from the magnitudes of
+/// the vectors currently shown -- \p inputs' A and B always, plus the sum
+/// and/or difference when their respective show_sum/show_difference toggle
+/// is on. Pads the largest magnitude by a margin, then snaps the result up to
+/// the smallest "nice" ring interval (a value from the 1/2/5 x 10^k step
+/// sequence) such that kAutoFitRings rings comfortably contain it, so the
+/// view stays visually stable (no jitter) as inputs change continuously.
+/// Degenerate inputs (e.g. all vectors at the origin) fall back to a default,
+/// non-zero interval rather than collapsing the view. Pure -- no ImGui/ImPlot
+/// dependency.
+[[nodiscard]] PlotExtent auto_fit_extent(const PlotInputs& inputs);
+
 /// A closed description of everything on-plot this frame. draw_plot() loops
 /// over this and issues the matching polarplot:: draw calls -- no toggle
 /// logic of its own left over.
@@ -58,6 +84,9 @@ struct PlotPlan {
     // Composed once from PlotInputs' angle-convention fields, needed by the
     // caller to draw everything above.
     polarplot::AngleConvention convention;
+    // See auto_fit_extent -- the same values must drive both draw_polar_grid
+    // and the plot's axis limits so they never disagree.
+    PlotExtent extent;
 };
 
 /// Decide this frame's PlotPlan from \p inputs. Pure -- internally calls into

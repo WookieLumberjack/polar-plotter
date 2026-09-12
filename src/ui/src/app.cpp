@@ -188,11 +188,7 @@ void App::draw_plot() const {
         .show_zero_direction_arc_persistent = show_zero_direction_arc_persistent_,
     });
 
-    double extent = 1.0;
-    for (const vecmath::Vec2 v : {a, b, a + b, a - b}) {
-        extent = std::max(extent, vecmath::magnitude(v));
-    }
-    extent *= 1.2;
+    const double extent = plan.extent.extent;
 
     if (!polarplot::begin_vector_plot("##polar", extent)) {
         return;
