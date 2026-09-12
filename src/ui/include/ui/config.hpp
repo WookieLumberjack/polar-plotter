@@ -17,6 +17,12 @@ struct Config {
     // Pixel thickness of vector shafts/heads and the zero-direction/annotation
     // arcs, shared by all of them -- there is no per-item styling.
     float line_width{2.0F};
+    // When true, the polar plot's ring interval/extent is auto-fit to the
+    // shown vectors' magnitudes; when false, manual_ring_interval is used
+    // verbatim instead (see ui::PlotInputs::auto_scale).
+    bool auto_scale{true};
+    // Ring interval used verbatim when auto_scale is false.
+    float manual_ring_interval{1.0F};
 
     friend bool operator==(const Config&, const Config&) = default;
 };

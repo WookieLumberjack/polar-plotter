@@ -35,6 +35,16 @@ enum class MeasurementConvention : std::uint8_t {
 [[nodiscard]] double compose_angle_sign(RotationDirection rotation_direction,
                                         MeasurementConvention measurement_convention);
 
+/// Plain sweep sign for the on-plot rotation-direction indicator: +1 for
+/// \c CounterClockwise, -1 for \c Clockwise. Deliberately independent of
+/// \ref MeasurementConvention (unlike \ref compose_angle_sign) -- the
+/// indicator shows only which way the plot physically rotates, not how
+/// angles are measured against that rotation. Pure function -- the test seam
+/// for this composition; \c polar_plotting only ever sees this plain double,
+/// never \ref RotationDirection itself (see
+/// docs/adr/0001-polar-plotting-receives-only-composed-angle-sign.md).
+[[nodiscard]] double rotation_sweep_sign(RotationDirection rotation_direction);
+
 }  // namespace ui
 
 #endif  // UI_ANGLE_CONVENTION_HPP
