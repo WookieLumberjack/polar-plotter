@@ -45,6 +45,24 @@ bool draw_binary_radio(const char* label_a, const char* label_b, bool is_a) {
     return is_a;
 }
 
+// Live drag tooltip (#44/#51): shown only while \p label's vector is actively
+// dragging, near the cursor, with the same Amplitude/Phase/Real/Imag
+// labels/format used by the vector input fields and derived-vectors table.
+// Amplitude/Phase conversion is a ui-layer concern (ui::to_polar_display), so
+// this is drawn here rather than pushed down into polar_plotting, which knows
+// only raw Point/Vec2 and has no notion of that display convention.
+void draw_drag_tooltip(const char* label, polarplot::Point head) {
+    const vecmath::Vec2 v{head.x, head.y};
+    const PolarDisplay display = to_polar_display(v);
+    ImGui::BeginTooltip();
+    ImGui::Text("%s", label);
+    ImGui::Text("Amplitude: %.3f", static_cast<double>(display.amplitude));
+    ImGui::Text("Phase (deg): %.2f", static_cast<double>(display.phase_deg));
+    ImGui::Text("Real: %.3f", v.x);
+    ImGui::Text("Imag: %.3f", v.y);
+    ImGui::EndTooltip();
+}
+
 }  // namespace
 
 void App::draw_vector_input(const char* label_prefix, VectorInput& input) {
@@ -388,6 +406,15 @@ void App::draw_plot() {
     const polarplot::InteractiveVectorResult b_result = polarplot::draw_interactive_vector(
         "B", plan.b, plan.convention, marker_style_, hovered == polarplot::HoverTarget::kB,
         b_.dragging_, /*head_frac=*/0.12, line_width_);
+    // Live drag tooltip (#44/#51): only while actively dragging, not during a
+    // plain pre-drag hover -- disappears the instant the drag ends, since a
+    // kReleased/kIdle/kHovered frame no longer matches kDragging here.
+    if (a_result.state == polarplot::InteractionState::kDragging) {
+        draw_drag_tooltip("A", a_result.head);
+    }
+    if (b_result.state == polarplot::InteractionState::kDragging) {
+        draw_drag_tooltip("B", b_result.head);
+    }
     apply_interactive_result(a_, a_result);
     apply_interactive_result(b_, b_result);
     if (plan.difference) {
