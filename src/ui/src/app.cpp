@@ -52,6 +52,8 @@ App::App(std::filesystem::path config_path) : config_path_(std::move(config_path
         show_sum_ = cfg->show_sum;
         show_difference_ = cfg->show_difference;
         line_width_ = cfg->line_width;
+        auto_scale_ = cfg->auto_scale;
+        manual_ring_interval_ = cfg->manual_ring_interval;
     }
 }
 
@@ -61,7 +63,8 @@ void App::save() const {
     if (config_path_.empty()) {
         return;
     }
-    const Config cfg{a_.xy, b_.xy, show_sum_, show_difference_, line_width_};
+    const Config cfg{
+        a_.xy, b_.xy, show_sum_, show_difference_, line_width_, auto_scale_, manual_ring_interval_};
     (void)save_config(config_path_, cfg);
 }
 
@@ -154,6 +157,17 @@ void App::draw_controls() {
 
     ImGui::SliderFloat("Line width", &line_width_, 1.0F, 6.0F, "%.1f");
 
+    ImGui::Spacing();
+    ImGui::Checkbox("Auto-scale", &auto_scale_);
+    if (!auto_scale_) {
+        // Logarithmic: the interval spans three decades (0.1 to 100), and a
+        // plain linear slider would leave the bottom of that range
+        // (differences of a few hundredths) unreachable with any usable
+        // precision.
+        ImGui::SliderFloat("Ring interval", &manual_ring_interval_, 0.1F, 100.0F, "%.3f",
+                           ImGuiSliderFlags_Logarithmic);
+    }
+
     const vecmath::Vec2 a = to_vec(a_.xy);
     const vecmath::Vec2 b = to_vec(b_.xy);
     const vecmath::Polar pa = vecmath::to_polar(a);
@@ -186,23 +200,26 @@ void App::draw_plot() const {
         .measurement_convention = measurement_convention_,
         .zero_direction_input_focused = zero_direction_input_focused_,
         .show_zero_direction_arc_persistent = show_zero_direction_arc_persistent_,
+        .auto_scale = auto_scale_,
+        .manual_ring_interval = static_cast<double>(manual_ring_interval_),
     });
 
-    double extent = 1.0;
-    for (const vecmath::Vec2 v : {a, b, a + b, a - b}) {
-        extent = std::max(extent, vecmath::magnitude(v));
-    }
-    extent *= 1.2;
+    // The grid's outer ring is drawn at exactly `extent` -- the same value
+    // handed to begin_vector_plot's ring_interval/ring_count -- so the scale
+    // ruler's tick positions always land exactly on the rings they label.
+    // The axis view itself is inflated a bit beyond `extent` (rather than
+    // shrinking the grid inside an unchanged view, which would move the
+    // rings off the ruler's ticks) so the grid's spoke degree labels, drawn
+    // just outside the outer ring, have room without getting clipped.
+    const double extent = plan.extent.extent;
+    constexpr double kViewExtentFactor = 1.15;
+    const double view_extent = extent * kViewExtentFactor;
 
-    if (!polarplot::begin_vector_plot("##polar", extent)) {
+    if (!polarplot::begin_vector_plot("##polar", view_extent, plan.extent.ring_interval,
+                                      kAutoFitRings)) {
         return;
     }
-    // The grid's outer ring sits a bit inside the view (rather than at
-    // `extent`) so its spoke degree labels, drawn just outside the ring, fit
-    // within the plot's unchanged default view instead of getting clipped.
-    constexpr double kGridExtentFactor = 1.0 / 1.15;
-    const double grid_extent = extent * kGridExtentFactor;
-    polarplot::draw_polar_grid(grid_extent, plan.convention);
+    polarplot::draw_polar_grid(extent, plan.convention);
     polarplot::draw_vector("A", plan.a, plan.convention, marker_style_, /*head_frac=*/0.12,
                            line_width_);
     polarplot::draw_vector("B", plan.b, plan.convention, marker_style_, /*head_frac=*/0.12,
@@ -231,8 +248,20 @@ void App::draw_plot() const {
     if (plan.zero_direction_arc_angle) {
         polarplot::ArcStyle arc_style{};
         arc_style.thickness = line_width_;
-        polarplot::draw_angle_arc(grid_extent * 0.85, *plan.zero_direction_arc_angle, arc_style);
+        polarplot::draw_angle_arc(extent * 0.85, *plan.zero_direction_arc_angle, arc_style);
     }
+    // Always drawn, right on the outer ring (as opposed to the zero-direction
+    // arc's slightly inset radius above) and centered on the plot's
+    // 3-o'clock reference rather than 12-o'clock, so it never visually
+    // overlaps that arc; distinct color reinforces the two are unrelated.
+    polarplot::ArcStyle rotation_indicator_style{};
+    rotation_indicator_style.r = 0.2F;
+    rotation_indicator_style.g = 0.6F;
+    rotation_indicator_style.b = 1.0F;
+    rotation_indicator_style.a = 1.0F;
+    rotation_indicator_style.thickness = line_width_;
+    polarplot::draw_rotation_indicator(extent, plan.rotation_indicator_sweep_sign,
+                                       rotation_indicator_style);
     polarplot::end_vector_plot();
 }
 

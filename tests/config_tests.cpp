@@ -57,3 +57,38 @@ TEST_CASE("loading a config file that omits line_width falls back to the default
 
     std::filesystem::remove(path);
 }
+
+TEST_CASE("auto_scale and manual_ring_interval round-trip through save_config/load_config",
+          "[config]") {
+    const std::filesystem::path path =
+        make_temp_path("polar_plotter_config_tests_manual_scale.cfg");
+
+    Config cfg{};
+    cfg.auto_scale = false;
+    cfg.manual_ring_interval = 12.5F;
+
+    REQUIRE(save_config(path, cfg));
+    const Config loaded = require_value(load_config(path));
+    CHECK(loaded.auto_scale == false);
+    CHECK(loaded.manual_ring_interval == 12.5F);
+
+    std::filesystem::remove(path);
+}
+
+TEST_CASE("loading a config file that omits auto_scale/manual_ring_interval falls back to defaults",
+          "[config]") {
+    const std::filesystem::path path =
+        make_temp_path("polar_plotter_config_tests_manual_scale_missing.cfg");
+
+    {
+        std::ofstream out(path, std::ios::trunc);
+        out << "a.x=1.0\n";
+        out << "a.y=2.0\n";
+    }
+
+    const Config loaded = require_value(load_config(path));
+    CHECK(loaded.auto_scale == Config{}.auto_scale);
+    CHECK(loaded.manual_ring_interval == Config{}.manual_ring_interval);
+
+    std::filesystem::remove(path);
+}
