@@ -12,10 +12,20 @@ does not enter this glossary.
 
 **Named vector**:
 A vector with a label the UI displays and lets the user reason about — `A`,
-`B`, and derived vectors like `A + B` or `A − B`. Every named vector gets a
+`B`, and derived vectors like `A + B`, `A − B`, `B − A`, `A × B` (complex
+product), `A ÷ B`, or `B ÷ A` (complex quotient). Every named vector gets a
 tip marker and a tip label when drawn.
 _Avoid_: quantity, input vector (for A/B specifically — they're named vectors
 like any other, just user-editable ones)
+
+**Complex product / Complex quotient**:
+`A × B` and `A ÷ B` (and `B ÷ A`): derived vectors computed by treating each
+named vector's Cartesian components as a complex number (Real, Imaginary)
+and multiplying/dividing under complex-number arithmetic — amplitude
+multiplies/divides, phase adds/subtracts. Distinct from the existing scalar
+dot product (`A . B`) shown elsewhere in the UI, which is unrelated. Amplitude
+and Phase are the same underlying magnitude/angle already used elsewhere,
+just labeled to match the Real/Imag pairing.
 
 **Angle convention**:
 The pair of settings (zero direction, angle sign) that maps a vector's

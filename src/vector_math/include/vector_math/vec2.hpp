@@ -1,6 +1,8 @@
 #ifndef VECTOR_MATH_VEC2_HPP
 #define VECTOR_MATH_VEC2_HPP
 
+#include <optional>
+
 /// \file
 /// 2D vector primitives. This module is deliberately free of any UI / ImGui /
 /// ImPlot dependency so it can be unit-tested in isolation and reused.
@@ -46,6 +48,26 @@ constexpr double cross(Vec2 a, Vec2 b) { return (a.x * b.y) - (a.y * b.x); }
 
 /// Squared magnitude. Cheap; prefer this for comparisons.
 constexpr double magnitude_squared(Vec2 v) { return dot(v, v); }
+
+// --- Complex arithmetic (see ADR 0002 for why these are named functions,
+// distinct from operator*/operator/) -----------------------------------------
+
+/// Treats \p a and \p b as complex numbers (Real, Imaginary) and multiplies
+/// them: amplitude multiplies, phase adds.
+constexpr Vec2 complex_multiply(Vec2 a, Vec2 b) {
+    return {(a.x * b.x) - (a.y * b.y), (a.x * b.y) + (a.y * b.x)};
+}
+
+/// Treats \p a and \p b as complex numbers and divides them: amplitude
+/// divides, phase subtracts. Returns std::nullopt when \p b has zero
+/// magnitude (division undefined), rather than a NaN-filled Vec2.
+constexpr std::optional<Vec2> complex_divide(Vec2 a, Vec2 b) {
+    const double denom = magnitude_squared(b);
+    if (denom == 0.0) {
+        return std::nullopt;
+    }
+    return Vec2{((a.x * b.x) + (a.y * b.y)) / denom, ((a.y * b.x) - (a.x * b.y)) / denom};
+}
 
 // --- Trigonometric helpers (defined in vec2.cpp) ----------------------------
 
