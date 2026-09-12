@@ -42,30 +42,40 @@ void plot_arrow_shape(const std::string& shaft_id, const std::string& head_id, P
     // they're drawn as two separate ImPlot items.
     const ImVec4 resolved_color = ImPlot::GetLastItemColor();
 
+    if (head.x == tail.x && head.y == tail.y) {
+        return;
+    }
+
+    const ArrowheadWings wings = arrowhead_wing_points(tail, head, head_frac);
+    const std::array<double, 3> hx{wings.first.x, head.x, wings.second.x};
+    const std::array<double, 3> hy{wings.first.y, head.y, wings.second.y};
+
+    ImPlot::PlotLine(head_id.c_str(), hx.data(), hy.data(), 3, arrow_line_spec(&resolved_color));
+}
+
+}  // namespace
+
+ArrowheadWings arrowhead_wing_points(Point tail, Point head, double head_frac) {
+    constexpr double kWing = 0.4;  // half-width of the head as a fraction of h
+
     const double dx = head.x - tail.x;
     const double dy = head.y - tail.y;
     const double len = std::hypot(dx, dy);
     if (len == 0.0) {
-        return;
+        return {head, head};
     }
 
     const double ux = dx / len;
     const double uy = dy / len;
     const double h = len * head_frac;
-    constexpr double kWing = 0.4;  // half-width of the head as a fraction of h
 
     const double back_x = head.x - (h * ux);
     const double back_y = head.y - (h * uy);
     const double wing_x = kWing * h * uy;
     const double wing_y = kWing * h * ux;
 
-    const std::array<double, 3> hx{back_x + wing_x, head.x, back_x - wing_x};
-    const std::array<double, 3> hy{back_y - wing_y, head.y, back_y + wing_y};
-
-    ImPlot::PlotLine(head_id.c_str(), hx.data(), hy.data(), 3, arrow_line_spec(&resolved_color));
+    return {Point{back_x + wing_x, back_y - wing_y}, Point{back_x - wing_x, back_y + wing_y}};
 }
-
-}  // namespace
 
 double apply_angle_convention(double math_angle, AngleConvention convention) {
     const double angle = convention.zero_direction + (convention.angle_sign * math_angle);
@@ -225,6 +235,28 @@ void draw_angle_arc(double radius, double to_angle, ArcStyle style) {
     const ImVec4 color{style.r, style.g, style.b, style.a};
     const ImPlotSpec spec{ImPlotProp_LineColor, color, ImPlotProp_LineWeight, style.thickness};
     ImPlot::PlotLine("##angle_arc", ax.data(), ay.data(), kArcSegments + 1, spec);
+
+    // Chevron arrowhead at the to_angle end, pointing along the arc's local
+    // tangent there. The last arc segment is far too short to size the head
+    // off directly (it shrinks with kArcSegments), so build a synthetic tail
+    // that is exactly the desired head length behind the tip, along that same
+    // tangent direction, and hand it to arrowhead_wing_points with
+    // head_frac = 1.0 so the full synthetic length becomes the head length.
+    constexpr double kArcHeadFrac = 0.12;  // head length as a fraction of radius
+    const Point arc_tip{ax[kArcSegments], ay[kArcSegments]};
+    const double tangent_dx = ax[kArcSegments] - ax[kArcSegments - 1];
+    const double tangent_dy = ay[kArcSegments] - ay[kArcSegments - 1];
+    const double tangent_len = std::hypot(tangent_dx, tangent_dy);
+    if (tangent_len > 0.0) {
+        const double head_len = radius * kArcHeadFrac;
+        const double ux = tangent_dx / tangent_len;
+        const double uy = tangent_dy / tangent_len;
+        const Point synthetic_tail{arc_tip.x - (head_len * ux), arc_tip.y - (head_len * uy)};
+        const ArrowheadWings wings = arrowhead_wing_points(synthetic_tail, arc_tip, 1.0);
+        const std::array<double, 3> hx{wings.first.x, arc_tip.x, wings.second.x};
+        const std::array<double, 3> hy{wings.first.y, arc_tip.y, wings.second.y};
+        ImPlot::PlotLine("##angle_arc_head", hx.data(), hy.data(), 3, spec);
+    }
 }
 
 }  // namespace polarplot
