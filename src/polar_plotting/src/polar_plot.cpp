@@ -22,6 +22,10 @@ constexpr int kArcSegments = 48;
 constexpr double kRotationIndicatorSweep = kPi / 6.0;  // 30 degrees
 // Spoke labels sit just outside the outer ring rather than exactly on it.
 constexpr double kLabelRadiusFactor = 1.08;
+// Headroom the axis view needs beyond a PlotFrame's extent so spoke-degree
+// labels (drawn at kLabelRadiusFactor * extent, plus their own text width)
+// aren't clipped by the plot's axis limits.
+constexpr double kLabelPaddingFactor = 1.15;
 
 // Build the ImPlotSpec used for an arrow's shaft/head: \p line_color when
 // non-null, otherwise ImPlot's default per-item color cycling; \p thickness
@@ -89,6 +93,8 @@ ArrowheadWings arrowhead_wing_points(Point tail, Point head, double head_frac) {
 
     return {Point{back_x + wing_x, back_y - wing_y}, Point{back_x - wing_x, back_y + wing_y}};
 }
+
+double inflate_for_labels(PlotFrame frame) { return frame.extent * kLabelPaddingFactor; }
 
 double apply_angle_convention(double math_angle, AngleConvention convention) {
     const double angle = convention.zero_direction + (convention.angle_sign * math_angle);
