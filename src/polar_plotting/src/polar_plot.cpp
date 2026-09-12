@@ -94,7 +94,7 @@ ArrowheadWings arrowhead_wing_points(Point tail, Point head, double head_frac) {
     return {Point{back_x + wing_x, back_y - wing_y}, Point{back_x - wing_x, back_y + wing_y}};
 }
 
-double inflate_for_labels(PlotFrame frame) { return frame.extent * kLabelPaddingFactor; }
+double inflate_for_labels(PlotFrame frame) { return frame.extent() * kLabelPaddingFactor; }
 
 double apply_angle_convention(double math_angle, AngleConvention convention) {
     const double angle = convention.zero_direction + (convention.angle_sign * math_angle);
@@ -159,7 +159,7 @@ bool begin_vector_plot(const char* title, PlotFrame frame) {
     ImPlot::SetupAxis(ImAxis_Y2, nullptr, kRulerFlags);
     ImPlot::SetupAxisLimits(ImAxis_Y2, -extent, extent, ImPlotCond_Always);
 
-    const std::vector<RulerTick> ticks = ruler_ticks(frame.ring_interval, frame.ring_count);
+    const std::vector<RulerTick> ticks = ruler_ticks(frame.ring_interval(), frame.ring_count());
     std::vector<double> positions;
     std::vector<std::string> label_strings;
     std::vector<const char*> label_pointers;
@@ -191,8 +191,8 @@ void draw_polar_grid(PlotFrame frame, AngleConvention convention, int spokes) {
     constexpr float kInteriorWeight = 1.0F;
     constexpr float kOuterWeight = 2.5F;
 
-    const double max_radius = frame.extent;
-    const int rings = frame.ring_count;
+    const double max_radius = frame.extent();
+    const int rings = frame.ring_count();
 
     constexpr int kSegments = 96;
     std::array<double, kSegments> cx{};
@@ -381,7 +381,7 @@ RotationIndicatorArc rotation_indicator_arc(double sweep_sign) {
 
 void draw_rotation_indicator(PlotFrame frame, double sweep_sign, ArcStyle style) {
     const RotationIndicatorArc arc = rotation_indicator_arc(sweep_sign);
-    draw_arc_with_head(frame.extent, arc.from_angle, arc.to_angle, style, "##rotation_indicator",
+    draw_arc_with_head(frame.extent(), arc.from_angle, arc.to_angle, style, "##rotation_indicator",
                        "##rotation_indicator_head");
 }
 

@@ -6,6 +6,7 @@
 /// grid. Depends only on Dear ImGui and ImPlot -- deliberately no dependency on
 /// the vector_math module so this can be lifted into another project.
 
+#include <cassert>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -30,16 +31,36 @@ struct AngleConvention {
 };
 
 /// The three related numbers describing one frame's polar view: the plotted
-/// axis extent (+/- \p extent on both axes), the radius spacing between rings
-/// (\p ring_interval), and how many rings are drawn (\p ring_count). Always
-/// related by `extent == ring_interval * ring_count`. Owned entirely by
-/// \c polar_plotting, exactly like \ref AngleConvention -- it carries no
-/// vector-magnitude reasoning of its own; callers (e.g. \c ui::plot_plan)
-/// compute the values and hand in the finished bundle.
-struct PlotFrame {
-    double extent{0.0};
-    double ring_interval{0.0};
-    int ring_count{0};
+/// axis extent (+/- \c extent() on both axes), the radius spacing between
+/// rings (\c ring_interval()), and how many rings are drawn
+/// (\c ring_count()). Always related by `extent() == ring_interval() *
+/// ring_count()` -- enforced by construction, since \c extent() is derived
+/// rather than stored, so there is no second number for it to disagree with.
+/// Owned entirely by \c polar_plotting, exactly like \ref AngleConvention --
+/// it carries no vector-magnitude reasoning of its own; callers (e.g.
+/// \c ui::plot_plan) compute \p ring_interval/\p ring_count and hand them to
+/// the constructor.
+class PlotFrame {
+public:
+    /// Builds a frame from \p ring_interval and \p ring_count, both of which
+    /// must be strictly positive -- asserted as a precondition, not clamped
+    /// or silently repaired, so a caller bug surfaces immediately instead of
+    /// producing silently-wrong plot geometry.
+    constexpr PlotFrame(double ring_interval, int ring_count)
+        : ring_interval_(ring_interval), ring_count_(ring_count) {
+        assert(ring_interval > 0.0 && "PlotFrame requires a strictly positive ring_interval");
+        assert(ring_count > 0 && "PlotFrame requires a strictly positive ring_count");
+    }
+
+    [[nodiscard]] constexpr double extent() const {
+        return ring_interval_ * static_cast<double>(ring_count_);
+    }
+    [[nodiscard]] constexpr double ring_interval() const { return ring_interval_; }
+    [[nodiscard]] constexpr int ring_count() const { return ring_count_; }
+
+private:
+    double ring_interval_;
+    int ring_count_;
 };
 
 /// Inflate \p frame's \c extent by a fixed headroom factor so the
