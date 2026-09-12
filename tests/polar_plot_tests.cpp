@@ -338,6 +338,56 @@ TEST_CASE("hover_hit_test treats the hit radius boundary as inclusive", "[polar_
     REQUIRE(hit == polarplot::HoverTarget::kA);
 }
 
+TEST_CASE("resolve_interaction_state stays idle when not hovered and not dragging",
+          "[polar_plot][interaction]") {
+    const polarplot::InteractionState state = polarplot::resolve_interaction_state(
+        /*was_dragging=*/false, /*is_hover_target=*/false, /*mouse_pressed=*/false,
+        /*mouse_down=*/false);
+    REQUIRE(state == polarplot::InteractionState::kIdle);
+}
+
+TEST_CASE("resolve_interaction_state reports hovered when targeted but not pressed",
+          "[polar_plot][interaction]") {
+    const polarplot::InteractionState state = polarplot::resolve_interaction_state(
+        /*was_dragging=*/false, /*is_hover_target=*/true, /*mouse_pressed=*/false,
+        /*mouse_down=*/false);
+    REQUIRE(state == polarplot::InteractionState::kHovered);
+}
+
+TEST_CASE("resolve_interaction_state starts dragging on press while hovered",
+          "[polar_plot][interaction]") {
+    const polarplot::InteractionState state = polarplot::resolve_interaction_state(
+        /*was_dragging=*/false, /*is_hover_target=*/true, /*mouse_pressed=*/true,
+        /*mouse_down=*/true);
+    REQUIRE(state == polarplot::InteractionState::kDragging);
+}
+
+TEST_CASE("resolve_interaction_state does not start a drag from a press elsewhere",
+          "[polar_plot][interaction]") {
+    const polarplot::InteractionState state = polarplot::resolve_interaction_state(
+        /*was_dragging=*/false, /*is_hover_target=*/false, /*mouse_pressed=*/true,
+        /*mouse_down=*/true);
+    REQUIRE(state == polarplot::InteractionState::kIdle);
+}
+
+TEST_CASE("resolve_interaction_state keeps dragging while the button stays held",
+          "[polar_plot][interaction]") {
+    // Once dragging, continues regardless of whether the cursor is still
+    // within hit range of the (possibly moved) tip.
+    const polarplot::InteractionState state = polarplot::resolve_interaction_state(
+        /*was_dragging=*/true, /*is_hover_target=*/false, /*mouse_pressed=*/false,
+        /*mouse_down=*/true);
+    REQUIRE(state == polarplot::InteractionState::kDragging);
+}
+
+TEST_CASE("resolve_interaction_state releases when the button is let go mid-drag",
+          "[polar_plot][interaction]") {
+    const polarplot::InteractionState state = polarplot::resolve_interaction_state(
+        /*was_dragging=*/true, /*is_hover_target=*/true, /*mouse_pressed=*/false,
+        /*mouse_down=*/false);
+    REQUIRE(state == polarplot::InteractionState::kReleased);
+}
+
 TEST_CASE("inflate_for_labels inflates a PlotFrame's extent by a fixed headroom factor",
           "[polar_plot][plot_frame]") {
     SECTION("scales proportionally to extent") {

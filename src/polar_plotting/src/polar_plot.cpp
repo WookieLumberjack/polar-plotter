@@ -355,6 +355,47 @@ HoverTarget hover_target(Point head_a, Point head_b, AngleConvention convention)
                           hit_radius_px);
 }
 
+InteractionState resolve_interaction_state(bool was_dragging, bool is_hover_target,
+                                           bool mouse_pressed, bool mouse_down) {
+    if (was_dragging) {
+        return mouse_down ? InteractionState::kDragging : InteractionState::kReleased;
+    }
+    if (is_hover_target && mouse_pressed) {
+        return InteractionState::kDragging;
+    }
+    return is_hover_target ? InteractionState::kHovered : InteractionState::kIdle;
+}
+
+InteractiveVectorResult draw_interactive_vector(const char* label, Point head,
+                                                AngleConvention convention,
+                                                TipMarkerStyle marker_style, bool is_hover_target,
+                                                bool was_dragging, double head_frac,
+                                                float thickness) {
+    constexpr ImGuiMouseButton kDragButton = ImGuiMouseButton_Left;
+    const bool mouse_down = ImGui::IsMouseDown(kDragButton);
+    const bool mouse_pressed = ImGui::IsMouseClicked(kDragButton);
+    const InteractionState state =
+        resolve_interaction_state(was_dragging, is_hover_target, mouse_pressed, mouse_down);
+
+    Point updated_head = head;
+    if (state == InteractionState::kDragging) {
+        const ImPlotPoint mouse_plot = ImPlot::GetPlotMousePos();
+        updated_head = from_plotted_point(Point{mouse_plot.x, mouse_plot.y}, convention);
+    }
+
+    const MarkerColor* marker_color = nullptr;
+    if (state == InteractionState::kDragging) {
+        marker_color = &kDraggingMarkerColor;
+    } else if (state == InteractionState::kHovered ||
+               (state == InteractionState::kReleased && is_hover_target)) {
+        marker_color = &kHoverMarkerColor;
+    }
+
+    draw_vector(label, updated_head, convention, marker_style, head_frac, thickness, marker_color);
+
+    return {updated_head, state};
+}
+
 void draw_annotation_vector(const char* id, AnnotationVector annotation, AngleConvention convention,
                             double head_frac, float thickness) {
     // Muted, semi-transparent gray -- distinct from named vectors, which cycle

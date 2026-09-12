@@ -183,18 +183,24 @@ void App::render() {
     const float pad = 16.0F;
     const float controls_w = 380.0F;
 
-    ImGui::SetNextWindowPos({vp->WorkPos.x + pad, vp->WorkPos.y + pad}, ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize({controls_w, vp->WorkSize.y - (2 * pad)}, ImGuiCond_FirstUseEver);
-    ImGui::Begin("Vectors");
-    draw_controls();
-    ImGui::End();
-
+    // Plot drawn first: dragging a tip (see #44/#48) writes the updated
+    // position straight back into a_/b_ inside draw_plot(), so drawing the
+    // plot before the controls window lets that same frame's Amplitude/
+    // Phase/Real/Imag fields and derived-vectors table read the fresh
+    // position -- window Begin/End order doesn't otherwise matter to either
+    // window's own widgets.
     ImGui::SetNextWindowPos({vp->WorkPos.x + controls_w + (2 * pad), vp->WorkPos.y + pad},
                             ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize({vp->WorkSize.x - controls_w - (3 * pad), vp->WorkSize.y - (2 * pad)},
                              ImGuiCond_FirstUseEver);
     ImGui::Begin("Polar plot");
     draw_plot();
+    ImGui::End();
+
+    ImGui::SetNextWindowPos({vp->WorkPos.x + pad, vp->WorkPos.y + pad}, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize({controls_w, vp->WorkSize.y - (2 * pad)}, ImGuiCond_FirstUseEver);
+    ImGui::Begin("Vectors");
+    draw_controls();
     ImGui::End();
 }
 
@@ -316,7 +322,20 @@ void App::draw_controls() {
     draw_derived_vectors_table(derived);
 }
 
-void App::draw_plot() const {
+void App::apply_interactive_result(VectorInput& input,
+                                   const polarplot::InteractiveVectorResult& result) {
+    input.dragging_ = (result.state == polarplot::InteractionState::kDragging);
+    if (result.state == polarplot::InteractionState::kDragging ||
+        result.state == polarplot::InteractionState::kReleased) {
+        // Starting (and continuing) a drag overrides any in-progress
+        // Amplitude/Phase text edit for this vector -- same precedence as
+        // clicking into Real/Imag today (see draw_vector_input).
+        input.xy = {static_cast<float>(result.head.x), static_cast<float>(result.head.y)};
+        input.polar_active_ = false;
+    }
+}
+
+void App::draw_plot() {
     const vecmath::Vec2 a = to_vec(a_.xy);
     const vecmath::Vec2 b = to_vec(b_.xy);
 
@@ -357,18 +376,20 @@ void App::draw_plot() const {
     }
     polarplot::draw_polar_grid(plan.extent, plan.convention);
 
-    // Hover-highlight cue for A/B (see #44/#47): whichever tip is under the
-    // cursor gets its marker recolored; no drag capability yet.
+    // Hover/click-drag for A/B (see #44/#47/#48): whichever tip is under the
+    // cursor is this frame's hit-test target; draw_interactive_vector turns
+    // that plus each vector's own carried-over dragging state into this
+    // frame's marker color, head position, and interaction state.
     const polarplot::HoverTarget hovered = polarplot::hover_target(plan.a, plan.b, plan.convention);
-    const polarplot::MarkerColor* const a_marker_color =
-        (hovered == polarplot::HoverTarget::kA) ? &polarplot::kHoverMarkerColor : nullptr;
-    const polarplot::MarkerColor* const b_marker_color =
-        (hovered == polarplot::HoverTarget::kB) ? &polarplot::kHoverMarkerColor : nullptr;
 
-    polarplot::draw_vector("A", plan.a, plan.convention, marker_style_, /*head_frac=*/0.12,
-                           line_width_, a_marker_color);
-    polarplot::draw_vector("B", plan.b, plan.convention, marker_style_, /*head_frac=*/0.12,
-                           line_width_, b_marker_color);
+    const polarplot::InteractiveVectorResult a_result = polarplot::draw_interactive_vector(
+        "A", plan.a, plan.convention, marker_style_, hovered == polarplot::HoverTarget::kA,
+        a_.dragging_, /*head_frac=*/0.12, line_width_);
+    const polarplot::InteractiveVectorResult b_result = polarplot::draw_interactive_vector(
+        "B", plan.b, plan.convention, marker_style_, hovered == polarplot::HoverTarget::kB,
+        b_.dragging_, /*head_frac=*/0.12, line_width_);
+    apply_interactive_result(a_, a_result);
+    apply_interactive_result(b_, b_result);
     if (plan.difference) {
         polarplot::draw_vector("A - B", *plan.difference, plan.convention, marker_style_,
                                /*head_frac=*/0.12, line_width_);
