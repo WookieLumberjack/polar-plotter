@@ -1,10 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
-#include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include "ui/derived_vectors.hpp"
 #include "vector_math/vec2.hpp"
 
-using Catch::Matchers::WithinAbs;
 using ui::compute_derived_vectors;
 using ui::DerivedVectors;
 using vecmath::Vec2;

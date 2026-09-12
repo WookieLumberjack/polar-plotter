@@ -86,13 +86,13 @@ TEST_CASE("plan_plot populates the plain-arrow derived vectors only when toggled
 
     SECTION("show_quotient_ab on: A / B present") {
         const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA, .b = kB, .show_quotient_ab = true});
-        const Vec2 expected = *vecmath::complex_divide(kA, kB);
+        const Vec2 expected = require_value(vecmath::complex_divide(kA, kB));
         CHECK(points_equal(require_value(plan.quotient_ab), {expected.x, expected.y}));
     }
 
     SECTION("show_quotient_ba on: B / A present") {
         const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA, .b = kB, .show_quotient_ba = true});
-        const Vec2 expected = *vecmath::complex_divide(kB, kA);
+        const Vec2 expected = require_value(vecmath::complex_divide(kB, kA));
         CHECK(points_equal(require_value(plan.quotient_ba), {expected.x, expected.y}));
     }
 
