@@ -197,7 +197,12 @@ void App::draw_plot() const {
     if (!polarplot::begin_vector_plot("##polar", extent)) {
         return;
     }
-    polarplot::draw_polar_grid(extent, plan.convention);
+    // The grid's outer ring sits a bit inside the view (rather than at
+    // `extent`) so its spoke degree labels, drawn just outside the ring, fit
+    // within the plot's unchanged default view instead of getting clipped.
+    constexpr double kGridExtentFactor = 1.0 / 1.15;
+    const double grid_extent = extent * kGridExtentFactor;
+    polarplot::draw_polar_grid(grid_extent, plan.convention);
     polarplot::draw_vector("A", plan.a, plan.convention, marker_style_, /*head_frac=*/0.12,
                            line_width_);
     polarplot::draw_vector("B", plan.b, plan.convention, marker_style_, /*head_frac=*/0.12,
@@ -226,7 +231,7 @@ void App::draw_plot() const {
     if (plan.zero_direction_arc_angle) {
         polarplot::ArcStyle arc_style{};
         arc_style.thickness = line_width_;
-        polarplot::draw_angle_arc(extent * 0.85, *plan.zero_direction_arc_angle, arc_style);
+        polarplot::draw_angle_arc(grid_extent * 0.85, *plan.zero_direction_arc_angle, arc_style);
     }
     polarplot::end_vector_plot();
 }

@@ -116,13 +116,7 @@ bool begin_vector_plot(const char* title, double extent) {
         return false;
     }
     ImPlot::SetupAxes("x", "y");
-    // The default view extends a bit past the grid's own outer ring (drawn at
-    // `extent`, see draw_polar_grid) so the spoke degree labels -- placed just
-    // outside that ring, see spoke_labels -- aren't clipped by the axis box at
-    // the default zoom. Only the initial view; the user can still zoom/pan.
-    constexpr double kViewPadding = 1.15;
-    const double view_extent = extent * kViewPadding;
-    ImPlot::SetupAxesLimits(-view_extent, view_extent, -view_extent, view_extent, ImPlotCond_Once);
+    ImPlot::SetupAxesLimits(-extent, extent, -extent, extent, ImPlotCond_Once);
     return true;
 }
 
