@@ -366,11 +366,20 @@ InteractionState resolve_interaction_state(bool was_dragging, bool is_hover_targ
     return is_hover_target ? InteractionState::kHovered : InteractionState::kIdle;
 }
 
+Point clamp_to_extent(Point p, double extent) {
+    return {std::clamp(p.x, -extent, extent), std::clamp(p.y, -extent, extent)};
+}
+
+Point clamp_to_rect(Point p, PixelRect rect) {
+    return {std::clamp(p.x, rect.min.x, rect.max.x), std::clamp(p.y, rect.min.y, rect.max.y)};
+}
+
 InteractiveVectorResult draw_interactive_vector(const char* label, Point head,
                                                 AngleConvention convention,
                                                 TipMarkerStyle marker_style, bool is_hover_target,
                                                 bool was_dragging, double head_frac,
-                                                float thickness) {
+                                                float thickness, bool auto_scale,
+                                                double visible_extent) {
     constexpr ImGuiMouseButton kDragButton = ImGuiMouseButton_Left;
     const bool mouse_down = ImGui::IsMouseDown(kDragButton);
     const bool mouse_pressed = ImGui::IsMouseClicked(kDragButton);
@@ -379,8 +388,31 @@ InteractiveVectorResult draw_interactive_vector(const char* label, Point head,
 
     Point updated_head = head;
     if (state == InteractionState::kDragging) {
-        const ImPlotPoint mouse_plot = ImPlot::GetPlotMousePos();
-        updated_head = from_plotted_point(Point{mouse_plot.x, mouse_plot.y}, convention);
+        // Clamp the mouse position to the plot canvas' own pixel-space
+        // bounds first (#44/#49): this keeps the drag tracking the cursor
+        // even once it strays outside the canvas (e.g. into a side panel or
+        // outside the window) while the button is still held, rather than
+        // freezing or canceling.
+        const ImVec2 plot_min_px = ImPlot::GetPlotPos();
+        const ImVec2 plot_size_px = ImPlot::GetPlotSize();
+        const ImVec2 mouse_px = ImGui::GetMousePos();
+        const PixelRect plot_rect{
+            Point{static_cast<double>(plot_min_px.x), static_cast<double>(plot_min_px.y)},
+            Point{static_cast<double>(plot_min_px.x + plot_size_px.x),
+                  static_cast<double>(plot_min_px.y + plot_size_px.y)}};
+        const Point clamped_px = clamp_to_rect(
+            Point{static_cast<double>(mouse_px.x), static_cast<double>(mouse_px.y)}, plot_rect);
+        const ImPlotPoint mouse_plot = ImPlot::PixelsToPlot(
+            ImVec2(static_cast<float>(clamped_px.x), static_cast<float>(clamped_px.y)));
+
+        Point plotted{mouse_plot.x, mouse_plot.y};
+        // Manual-scale clamp (#44/#49): only when auto-scale is off, so the
+        // existing auto-fit behavior (extent grows with the vector's
+        // magnitude) stays unaffected when auto-scale is on.
+        if (!auto_scale) {
+            plotted = clamp_to_extent(plotted, visible_extent);
+        }
+        updated_head = from_plotted_point(plotted, convention);
     }
 
     const MarkerColor* marker_color = nullptr;

@@ -273,6 +273,28 @@ enum class InteractionState : std::uint8_t {
 /// \ref kHoverMarkerColor.
 inline constexpr MarkerColor kDraggingMarkerColor{1.0F, 0.25F, 0.25F, 1.0F};
 
+/// Clamp \p p's x and y independently into `[-extent, extent]`, matching the
+/// square (equal-aspect) axis view \ref begin_vector_plot sets up. Used by
+/// \ref draw_interactive_vector to enforce #44/#49's manual-scale drag
+/// clamp: with auto-scale off, a dragged tip can never leave the currently
+/// visible extent. Pure function -- the test seam for this clamp.
+[[nodiscard]] Point clamp_to_extent(Point p, double extent);
+
+/// A pixel-space rectangle (e.g. the plot canvas' on-screen bounds), given as
+/// its \p min (top-left) and \p max (bottom-right) corners.
+struct PixelRect {
+    Point min;
+    Point max;
+};
+
+/// Clamp \p p into \p rect, independently on each axis. Used by
+/// \ref draw_interactive_vector to enforce #44/#49's "mouse leaves the
+/// canvas" rule: a drag keeps tracking the mouse position clamped to the
+/// plot's pixel-space edge, rather than freezing or canceling, once the
+/// cursor strays outside the plot canvas while the button is still held.
+/// Pure function -- the test seam for this clamp.
+[[nodiscard]] Point clamp_to_rect(Point p, PixelRect rect);
+
 /// Result of \ref draw_interactive_vector: \p head is the vector's head this
 /// frame, in the same math-convention space \ref draw_vector's \p head
 /// parameter takes (updated live while dragging via \ref from_plotted_point;
@@ -301,9 +323,24 @@ struct InteractiveVectorResult {
 /// resolved \ref InteractionState (or left at its normal idle color), and
 /// returns the updated head position plus that state for the caller (e.g.
 /// \c ui::App) to store back into its own vector state.
+///
+/// While dragging (#44/#49), the live mouse position is first clamped in
+/// pixel space to the plot canvas' own on-screen bounds (via
+/// \ref clamp_to_rect) -- so a cursor that strays outside the canvas (e.g.
+/// into a side panel, or outside the window) while the button is still held
+/// keeps updating the vector from the position clamped to the plot's edge,
+/// rather than freezing or canceling the drag -- and then, only when
+/// \p auto_scale is false, additionally clamped in plot space to
+/// `[-visible_extent, visible_extent]` on both axes (via
+/// \ref clamp_to_extent) so a manual-scale drag can never move the tip past
+/// the currently visible extent. When \p auto_scale is true (the default),
+/// \p visible_extent is ignored and this second clamp does not apply, so the
+/// existing auto-fit behavior (extent grows with the vector's magnitude) is
+/// unaffected.
 [[nodiscard]] InteractiveVectorResult draw_interactive_vector(
     const char* label, Point head, AngleConvention convention, TipMarkerStyle marker_style,
-    bool is_hover_target, bool was_dragging, double head_frac = 0.12, float thickness = 2.0F);
+    bool is_hover_target, bool was_dragging, double head_frac = 0.12, float thickness = 2.0F,
+    bool auto_scale = true, double visible_extent = 0.0);
 
 /// A free-vector annotation: an arrow beginning at an explicit \p start point
 /// (never assumed to originate at the origin) and displaced by \p vector.
