@@ -249,41 +249,34 @@ TEST_CASE("ruler_ticks respects a custom ring_count", "[polar_plot][ruler_ticks]
     CHECK(ticks[1].label == "1");
 }
 
-TEST_CASE("PlotFrame's extent is the product of its ring_interval and ring_count",
+TEST_CASE("PlotFrame's extent is derived from its ring_interval and ring_count",
           "[polar_plot][plot_frame]") {
     SECTION("default ring_count") {
-        constexpr polarplot::PlotFrame frame{.extent = 8.0, .ring_interval = 2.0, .ring_count = 4};
-        REQUIRE_THAT(frame.extent,
-                     WithinAbs(frame.ring_interval * static_cast<double>(frame.ring_count), 1e-12));
+        constexpr polarplot::PlotFrame frame{2.0, 4};
+        REQUIRE_THAT(frame.extent(), WithinAbs(8.0, 1e-12));
     }
 
     SECTION("a non-default ring_count") {
-        constexpr polarplot::PlotFrame frame{.extent = 1.5, .ring_interval = 0.5, .ring_count = 3};
-        REQUIRE_THAT(frame.extent,
-                     WithinAbs(frame.ring_interval * static_cast<double>(frame.ring_count), 1e-12));
+        constexpr polarplot::PlotFrame frame{0.5, 3};
+        REQUIRE_THAT(frame.extent(), WithinAbs(1.5, 1e-12));
     }
 }
 
 TEST_CASE("inflate_for_labels inflates a PlotFrame's extent by a fixed headroom factor",
           "[polar_plot][plot_frame]") {
     SECTION("scales proportionally to extent") {
-        constexpr polarplot::PlotFrame frame{.extent = 8.0, .ring_interval = 2.0, .ring_count = 4};
+        constexpr polarplot::PlotFrame frame{2.0, 4};
         const double inflated = polarplot::inflate_for_labels(frame);
 
-        CHECK(inflated > frame.extent);
-        REQUIRE_THAT(inflated / frame.extent, WithinAbs(1.15, 1e-12));
+        CHECK(inflated > frame.extent());
+        REQUIRE_THAT(inflated / frame.extent(), WithinAbs(1.15, 1e-12));
     }
 
     SECTION("the padding factor is independent of ring_interval/ring_count, only extent matters") {
-        constexpr polarplot::PlotFrame small{.extent = 2.0, .ring_interval = 2.0, .ring_count = 1};
-        constexpr polarplot::PlotFrame large{.extent = 2.0, .ring_interval = 0.5, .ring_count = 4};
+        constexpr polarplot::PlotFrame small{2.0, 1};
+        constexpr polarplot::PlotFrame large{0.5, 4};
 
         REQUIRE_THAT(polarplot::inflate_for_labels(small),
                      WithinAbs(polarplot::inflate_for_labels(large), 1e-12));
-    }
-
-    SECTION("zero extent inflates to zero") {
-        constexpr polarplot::PlotFrame frame{.extent = 0.0, .ring_interval = 0.0, .ring_count = 4};
-        REQUIRE_THAT(polarplot::inflate_for_labels(frame), WithinAbs(0.0, 1e-12));
     }
 }

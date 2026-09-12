@@ -64,20 +64,23 @@ must have already made before calling in:
   `docs/adr/0001-polar-plotting-receives-only-composed-angle-sign.md` for why
   the composition happens on the caller's side of this boundary.
 - **`PlotFrame`** — the three related numbers describing one frame's polar
-  view: the plotted axis extent (`extent`, applied as ± on both axes), the
-  radius spacing between rings (`ring_interval`), and how many rings are
-  drawn (`ring_count`), always related by `extent == ring_interval *
-  ring_count`. A caller (e.g. `ui::plot_plan`) is responsible for deciding
-  these three numbers together and handing in one finished bundle, rather
-  than deriving them independently at each call site — that's what lets
-  `begin_vector_plot`'s scale ruler, `draw_polar_grid`'s rings, and
-  `draw_rotation_indicator`'s radius agree by construction instead of by
-  convention. `inflate_for_labels(PlotFrame)` is a pure helper that computes
-  the extra axis headroom `begin_vector_plot` needs so spoke-degree labels
-  drawn just outside the outer ring aren't clipped; callers never derive or
-  pass that inflated value themselves.
+  view: the plotted axis extent (`extent()`, applied as ± on both axes), the
+  radius spacing between rings (`ring_interval()`), and how many rings are
+  drawn (`ring_count()`). Constructed via `PlotFrame(ring_interval,
+  ring_count)`, which asserts both are strictly positive; `extent()` is
+  derived from them on every call rather than stored, so `extent() ==
+  ring_interval() * ring_count()` holds by construction — there is no second
+  stored number for it to disagree with. A caller (e.g. `ui::plot_plan`) is
+  responsible for deciding `ring_interval`/`ring_count` together and handing
+  them to the constructor, rather than deriving `extent` independently at
+  each call site — that's what lets `begin_vector_plot`'s scale ruler,
+  `draw_polar_grid`'s rings, and `draw_rotation_indicator`'s radius agree by
+  construction instead of by convention. `inflate_for_labels(PlotFrame)` is a
+  pure helper that computes the extra axis headroom `begin_vector_plot` needs
+  so spoke-degree labels drawn just outside the outer ring aren't clipped;
+  callers never derive or pass that inflated value themselves.
 
-Both types are plain data owned entirely by this module — a caller composes
+Both types are small values owned entirely by this module — a caller composes
 them fresh each frame (or reuses a previous frame's values when nothing
 changed) and passes them into the relevant calls above.
 

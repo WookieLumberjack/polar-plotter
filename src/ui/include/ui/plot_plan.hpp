@@ -49,9 +49,9 @@ struct PlotInputs {
 };
 
 /// Number of concentric rings draw_polar_grid lays the auto-fit view out
-/// over. `polarplot::PlotFrame::extent` and `::ring_interval` are always
-/// related by `extent == ring_interval * kAutoFitRings`, and
-/// `PlotFrame::ring_count` is always `kAutoFitRings`.
+/// over. `polarplot::PlotFrame::extent()` and `::ring_interval()` are always
+/// related by `extent() == ring_interval() * kAutoFitRings`, and
+/// `PlotFrame::ring_count()` is always `kAutoFitRings`.
 inline constexpr int kAutoFitRings = 4;
 
 /// Computes this frame's auto-fit extent/ring-interval/ring-count from the
@@ -98,8 +98,10 @@ struct PlotPlan {
     // docs/adr/0001-polar-plotting-receives-only-composed-angle-sign.md).
     double rotation_indicator_sweep_sign{1.0};
     // See auto_fit_extent -- the same values must drive both draw_polar_grid
-    // and the plot's axis limits so they never disagree.
-    polarplot::PlotFrame extent;
+    // and the plot's axis limits so they never disagree. Default matches
+    // auto_fit_extent's degenerate-input fallback; plan_plot always
+    // overwrites this before returning.
+    polarplot::PlotFrame extent{1.0, kAutoFitRings};
 };
 
 /// Decide this frame's PlotPlan from \p inputs. Pure -- internally calls into
