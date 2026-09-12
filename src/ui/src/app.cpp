@@ -1,9 +1,11 @@
 #include "ui/app.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <numbers>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -12,6 +14,7 @@
 
 #include "polar_plotting/polar_plot.hpp"
 #include "ui/config.hpp"
+#include "ui/derived_vectors.hpp"
 #include "ui/plot_plan.hpp"
 #include "ui/polar_display.hpp"
 #include "ui/zero_direction.hpp"
@@ -83,6 +86,54 @@ void App::draw_vector_input(const char* label_prefix, VectorInput& input) {
         input.xy = {static_cast<float>(v.x), static_cast<float>(v.y)};
         input.polar_active_ = false;
     }
+}
+
+void App::draw_derived_vectors_table(const DerivedVectors& derived) {
+    struct Row {
+        const char* name{nullptr};
+        std::optional<vecmath::Vec2> vector;
+    };
+    const std::array<Row, 6> rows{{
+        {"A + B", derived.sum},
+        {"A - B", derived.difference_ab},
+        {"B - A", derived.difference_ba},
+        {"A x B", derived.product},
+        {"A / B", derived.quotient_ab},
+        {"B / A", derived.quotient_ba},
+    }};
+
+    if (!ImGui::BeginTable("derived_vectors", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+        return;
+    }
+    ImGui::TableSetupColumn("Vector");
+    ImGui::TableSetupColumn("Amplitude");
+    ImGui::TableSetupColumn("Phase (deg)");
+    ImGui::TableSetupColumn("Real");
+    ImGui::TableSetupColumn("Imag");
+    ImGui::TableHeadersRow();
+
+    for (const Row& row : rows) {
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted(row.name);
+        if (row.vector) {
+            const PolarDisplay display = to_polar_display(*row.vector);
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%.3f", static_cast<double>(display.amplitude));
+            ImGui::TableSetColumnIndex(2);
+            ImGui::Text("%.2f", static_cast<double>(display.phase_deg));
+            ImGui::TableSetColumnIndex(3);
+            ImGui::Text("%.3f", row.vector->x);
+            ImGui::TableSetColumnIndex(4);
+            ImGui::Text("%.3f", row.vector->y);
+        } else {
+            for (int col = 1; col <= 4; ++col) {
+                ImGui::TableSetColumnIndex(col);
+                ImGui::TextUnformatted("--");
+            }
+        }
+    }
+    ImGui::EndTable();
 }
 
 App::App() = default;
@@ -225,6 +276,9 @@ void App::draw_controls() {
     ImGui::Text("A + B = (%.4f, %.4f)", (a + b).x, (a + b).y);
     ImGui::Text("A . B = %.4f", vecmath::dot(a, b));
     ImGui::Text("angle(A, B) = %.2f deg", vecmath::angle_between(a, b) * kRadToDeg);
+
+    ImGui::SeparatorText("Derived vectors");
+    draw_derived_vectors_table(compute_derived_vectors(a, b));
 }
 
 void App::draw_plot() const {

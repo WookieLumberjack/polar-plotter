@@ -6,6 +6,7 @@
 
 #include "polar_plotting/polar_plot.hpp"
 #include "ui/angle_convention.hpp"
+#include "ui/derived_vectors.hpp"
 #include "ui/polar_display.hpp"
 
 namespace ui {
@@ -88,6 +89,9 @@ private:
     // rule: whichever field has focus this frame is the source of truth, the
     // rest are recomputed from it.
     static void draw_vector_input(const char* label_prefix, VectorInput& input);
+    // Read-only table of the 6 derived vectors (A+B, A-B, B-A, AxB, A/B,
+    // B/A), each row showing Amplitude/Phase/Real/Imag.
+    static void draw_derived_vectors_table(const DerivedVectors& derived);
 };
 
 }  // namespace ui
