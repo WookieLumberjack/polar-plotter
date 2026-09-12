@@ -57,6 +57,10 @@ void apply(Config& cfg, std::string_view key, std::string_view value) {
         cfg.show_sum = as_bool(value);
     } else if (key == "show_difference") {
         cfg.show_difference = as_bool(value);
+    } else if (key == "line_width") {
+        if (const auto v = parse_float(value)) {
+            cfg.line_width = *v;
+        }
     }
 }
 
@@ -96,6 +100,7 @@ bool save_config(const std::filesystem::path& path, const Config& config) {
     out << "b.y=" << config.b[1] << '\n';
     out << "show_sum=" << (config.show_sum ? 1 : 0) << '\n';
     out << "show_difference=" << (config.show_difference ? 1 : 0) << '\n';
+    out << "line_width=" << config.line_width << '\n';
     return out.good();
 }
 

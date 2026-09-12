@@ -51,6 +51,7 @@ App::App(std::filesystem::path config_path) : config_path_(std::move(config_path
         b_.xy = cfg->b;
         show_sum_ = cfg->show_sum;
         show_difference_ = cfg->show_difference;
+        line_width_ = cfg->line_width;
     }
 }
 
@@ -60,7 +61,7 @@ void App::save() const {
     if (config_path_.empty()) {
         return;
     }
-    const Config cfg{a_.xy, b_.xy, show_sum_, show_difference_};
+    const Config cfg{a_.xy, b_.xy, show_sum_, show_difference_, line_width_};
     (void)save_config(config_path_, cfg);
 }
 
@@ -151,6 +152,8 @@ void App::draw_controls() {
     marker_style_ =
         is_dot ? polarplot::TipMarkerStyle::kDot : polarplot::TipMarkerStyle::kCrossHair;
 
+    ImGui::SliderFloat("Line width", &line_width_, 1.0F, 6.0F, "%.1f");
+
     const vecmath::Vec2 a = to_vec(a_.xy);
     const vecmath::Vec2 b = to_vec(b_.xy);
     const vecmath::Polar pa = vecmath::to_polar(a);
@@ -194,14 +197,23 @@ void App::draw_plot() const {
     if (!polarplot::begin_vector_plot("##polar", extent)) {
         return;
     }
-    polarplot::draw_polar_grid(extent, plan.convention);
-    polarplot::draw_vector("A", plan.a, plan.convention, marker_style_);
-    polarplot::draw_vector("B", plan.b, plan.convention, marker_style_);
+    // The grid's outer ring sits a bit inside the view (rather than at
+    // `extent`) so its spoke degree labels, drawn just outside the ring, fit
+    // within the plot's unchanged default view instead of getting clipped.
+    constexpr double kGridExtentFactor = 1.0 / 1.15;
+    const double grid_extent = extent * kGridExtentFactor;
+    polarplot::draw_polar_grid(grid_extent, plan.convention);
+    polarplot::draw_vector("A", plan.a, plan.convention, marker_style_, /*head_frac=*/0.12,
+                           line_width_);
+    polarplot::draw_vector("B", plan.b, plan.convention, marker_style_, /*head_frac=*/0.12,
+                           line_width_);
     if (plan.difference) {
-        polarplot::draw_vector("A - B", *plan.difference, plan.convention, marker_style_);
+        polarplot::draw_vector("A - B", *plan.difference, plan.convention, marker_style_,
+                               /*head_frac=*/0.12, line_width_);
     }
     if (plan.sum) {
-        polarplot::draw_vector("A + B", *plan.sum, plan.convention, marker_style_);
+        polarplot::draw_vector("A + B", *plan.sum, plan.convention, marker_style_,
+                               /*head_frac=*/0.12, line_width_);
     }
     // Positional ids: fine because draw_annotation_vector's id is never shown
     // (see polar_plot.hpp), only needs to be unique per frame, and
@@ -210,14 +222,16 @@ void App::draw_plot() const {
     for (std::size_t i = 0; i < plan.tip_to_tail_annotations.size(); ++i) {
         const std::string id = "tip_to_tail_" + std::to_string(i);
         polarplot::draw_annotation_vector(id.c_str(), plan.tip_to_tail_annotations[i],
-                                          plan.convention);
+                                          plan.convention, /*head_frac=*/0.12, line_width_);
     }
     if (plan.difference_segment) {
         polarplot::draw_annotation_vector("diff_segment_b_to_a_tip", *plan.difference_segment,
-                                          plan.convention);
+                                          plan.convention, /*head_frac=*/0.12, line_width_);
     }
     if (plan.zero_direction_arc_angle) {
-        polarplot::draw_angle_arc(extent * 0.85, *plan.zero_direction_arc_angle);
+        polarplot::ArcStyle arc_style{};
+        arc_style.thickness = line_width_;
+        polarplot::draw_angle_arc(grid_extent * 0.85, *plan.zero_direction_arc_angle, arc_style);
     }
     polarplot::end_vector_plot();
 }
