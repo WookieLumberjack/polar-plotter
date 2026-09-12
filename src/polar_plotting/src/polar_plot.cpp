@@ -131,6 +131,16 @@ Point from_plotted_point(Point p, AngleConvention convention) {
     return {radius * std::cos(math_angle), radius * std::sin(math_angle)};
 }
 
+Point snap_angle_to_increment(Point p, double increment_radians) {
+    const double radius = std::hypot(p.x, p.y);
+    if (radius == 0.0) {
+        return {0.0, 0.0};
+    }
+    const double angle = std::atan2(p.y, p.x);
+    const double snapped_angle = std::round(angle / increment_radians) * increment_radians;
+    return {radius * std::cos(snapped_angle), radius * std::sin(snapped_angle)};
+}
+
 std::vector<RulerTick> ruler_ticks(double ring_interval, int ring_count) {
     std::vector<RulerTick> ticks;
     ticks.reserve(static_cast<std::size_t>(ring_count));
@@ -379,8 +389,14 @@ InteractiveVectorResult draw_interactive_vector(const char* label, Point head,
 
     Point updated_head = head;
     if (state == InteractionState::kDragging) {
+        // 15 degree snap increment, in plotted/visual space -- see #50.
+        constexpr double kSnapIncrementRadians = kPi / 12.0;
         const ImPlotPoint mouse_plot = ImPlot::GetPlotMousePos();
-        updated_head = from_plotted_point(Point{mouse_plot.x, mouse_plot.y}, convention);
+        Point plotted{mouse_plot.x, mouse_plot.y};
+        if (ImGui::GetIO().KeyShift) {
+            plotted = snap_angle_to_increment(plotted, kSnapIncrementRadians);
+        }
+        updated_head = from_plotted_point(plotted, convention);
     }
 
     const MarkerColor* marker_color = nullptr;

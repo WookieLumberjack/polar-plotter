@@ -88,6 +88,15 @@ private:
 /// convention \p c (within floating-point tolerance).
 [[nodiscard]] Point from_plotted_point(Point p, AngleConvention convention);
 
+/// Snap \p p's angle to the nearest multiple of \p increment_radians,
+/// preserving \p p's radius exactly -- only the angle changes. \p p is taken
+/// in whatever space it's given (see #50: callers snap a point already in
+/// plotted/visual space, i.e. after \ref to_plotted_point's remap, so the
+/// snap aligns with the grid as drawn rather than the raw math angle). The
+/// origin maps to itself (no angle to snap at zero radius). Pure function --
+/// the test seam for shift-to-snap angle logic.
+[[nodiscard]] Point snap_angle_to_increment(Point p, double increment_radians);
+
 /// The two "wing" endpoints of a chevron arrowhead pointing from \p tail
 /// toward \p head; the tip is \p head itself and is not part of this return
 /// value. \c first/\c second are symmetric about the tail-to-head line.
@@ -301,6 +310,15 @@ struct InteractiveVectorResult {
 /// resolved \ref InteractionState (or left at its normal idle color), and
 /// returns the updated head position plus that state for the caller (e.g.
 /// \c ui::App) to store back into its own vector state.
+///
+/// Shift-to-snap (#50): while dragging, holding Shift (checked live every
+/// frame via \c ImGui::GetIO().KeyShift) snaps the head's angle to the
+/// nearest 15 degree increment in plotted/visual space -- i.e. the drag
+/// position is snapped via \ref snap_angle_to_increment *after*
+/// \ref to_plotted_point's remap and before converting back with
+/// \ref from_plotted_point, so it aligns with the grid as drawn regardless
+/// of \p convention. Magnitude/radius is never snapped. Releasing Shift
+/// mid-drag takes effect the very next frame.
 [[nodiscard]] InteractiveVectorResult draw_interactive_vector(
     const char* label, Point head, AngleConvention convention, TipMarkerStyle marker_style,
     bool is_hover_target, bool was_dragging, double head_frac = 0.12, float thickness = 2.0F);
