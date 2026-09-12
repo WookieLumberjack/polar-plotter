@@ -4,6 +4,7 @@
 #include <cmath>
 #include <numbers>
 #include <string>
+#include <vector>
 
 #include <implot.h>
 
@@ -14,6 +15,8 @@ constexpr double kPi = std::numbers::pi;
 constexpr double kTwoPi = 2.0 * kPi;
 constexpr double kTopAngle = kPi / 2.0;  // plot "up"/12 o'clock, in raw coordinates
 constexpr int kArcSegments = 48;
+// Spoke labels sit just outside the outer ring rather than exactly on it.
+constexpr double kLabelRadiusFactor = 1.08;
 
 // Build the ImPlotSpec used for an arrow's shaft/head: \p line_color when
 // non-null, otherwise ImPlot's default per-item color cycling; \p thickness
@@ -113,7 +116,13 @@ bool begin_vector_plot(const char* title, double extent) {
         return false;
     }
     ImPlot::SetupAxes("x", "y");
-    ImPlot::SetupAxesLimits(-extent, extent, -extent, extent, ImPlotCond_Once);
+    // The default view extends a bit past the grid's own outer ring (drawn at
+    // `extent`, see draw_polar_grid) so the spoke degree labels -- placed just
+    // outside that ring, see spoke_labels -- aren't clipped by the axis box at
+    // the default zoom. Only the initial view; the user can still zoom/pan.
+    constexpr double kViewPadding = 1.15;
+    const double view_extent = extent * kViewPadding;
+    ImPlot::SetupAxesLimits(-view_extent, view_extent, -view_extent, view_extent, ImPlotCond_Once);
     return true;
 }
 
@@ -159,6 +168,33 @@ void draw_polar_grid(double max_radius, AngleConvention convention, int rings, i
                               kInteriorWeight};
         ImPlot::PlotLine(id.c_str(), sx.data(), sy.data(), 2, spec);
     }
+
+    // Muted, slightly more opaque than the grid lines themselves so the
+    // degree labels stay legible without competing with vectors/tip labels.
+    constexpr ImVec4 kLabelColor{0.65F, 0.65F, 0.65F, 0.9F};
+    for (const SpokeLabel& label : spoke_labels(max_radius, convention, spokes)) {
+        ImPlot::Annotation(label.position.x, label.position.y, kLabelColor, ImVec2(0.0F, 0.0F),
+                           false, "%s", label.text.c_str());
+    }
+}
+
+std::vector<SpokeLabel> spoke_labels(double max_radius, AngleConvention convention,
+                                     int spoke_count) {
+    std::vector<SpokeLabel> labels;
+    labels.reserve(static_cast<std::size_t>(spoke_count));
+
+    const double label_radius = max_radius * kLabelRadiusFactor;
+    for (int s = 0; s < spoke_count; ++s) {
+        const double t = kTwoPi * static_cast<double>(s) / spoke_count;
+        const double plotted = apply_angle_convention(t, convention);
+        const Point position{label_radius * std::cos(plotted), label_radius * std::sin(plotted)};
+
+        const double degrees = t * (180.0 / kPi);
+        const std::string text = std::to_string(static_cast<int>(std::lround(degrees))) + "°";
+
+        labels.push_back(SpokeLabel{position, text});
+    }
+    return labels;
 }
 
 void draw_arrow(const char* label, Point tail, Point head, AngleConvention convention,
