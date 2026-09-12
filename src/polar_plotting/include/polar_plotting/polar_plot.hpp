@@ -7,6 +7,8 @@
 /// the vector_math module so this can be lifted into another project.
 
 #include <cstdint>
+#include <string>
+#include <vector>
 
 namespace polarplot {
 
@@ -38,6 +40,23 @@ struct AngleConvention {
 /// its angle via \ref apply_angle_convention. The origin maps to itself.
 [[nodiscard]] Point to_plotted_point(Point p, AngleConvention convention);
 
+/// The two "wing" endpoints of a chevron arrowhead pointing from \p tail
+/// toward \p head; the tip is \p head itself and is not part of this return
+/// value. \c first/\c second are symmetric about the tail-to-head line.
+struct ArrowheadWings {
+    Point first;
+    Point second;
+};
+
+/// Compute the wing endpoints of a chevron arrowhead for an arrow shaft
+/// running from \p tail to \p head, with head length \p head_frac (fraction
+/// of the tail-to-head distance) and a fixed wing half-width relative to
+/// that head length. Pure function -- the test seam for arrowhead geometry,
+/// shared by every arrow-drawing entry point below plus \ref draw_angle_arc.
+/// When \p tail and \p head coincide (zero-length segment), both wings
+/// coincide with \p head.
+[[nodiscard]] ArrowheadWings arrowhead_wing_points(Point tail, Point head, double head_frac);
+
 /// Begin an equal-aspect plot centred on the origin, spanning +/- \p extent on
 /// both axes. Returns true when the plot is visible; call \ref end_vector_plot
 /// exactly once iff this returned true (mirrors ImPlot::BeginPlot).
@@ -47,8 +66,28 @@ struct AngleConvention {
 void end_vector_plot();
 
 /// Draw concentric rings and radial spokes out to \p max_radius, laid out
-/// according to \p convention.
+/// according to \p convention, plus a degree label just outside each spoke
+/// (see \ref spoke_labels).
 void draw_polar_grid(double max_radius, AngleConvention convention, int rings = 4, int spokes = 12);
+
+/// One spoke's degree label: \p position is where it should be drawn (in the
+/// plot's own drawing coordinates, already remapped via \p convention) and
+/// \p text is its formatted content, e.g. `"30°"`.
+struct SpokeLabel {
+    Point position;
+    std::string text;
+};
+
+/// Compute the position and text of each spoke's degree label for a grid out
+/// to \p max_radius with \p spoke_count evenly spaced spokes. Spoke `s`'s
+/// label text is always its un-rotated math angle (`s * 360 / spoke_count`
+/// degrees, formatted with a `°` suffix) -- so spoke 0 is always "0°" -- while
+/// its label *position* is remapped via \ref apply_angle_convention under
+/// \p convention, at a radius just beyond \p max_radius, so that the labels'
+/// positions rotate/mirror with the grid while their text always reads the
+/// plain math angle. Pure function -- the test seam for spoke labeling.
+[[nodiscard]] std::vector<SpokeLabel> spoke_labels(double max_radius, AngleConvention convention,
+                                                   int spoke_count = 12);
 
 /// Style of the tip marker drawn at every named vector's tip. A single value
 /// applies to every named vector on a plot -- there is no per-vector styling.
@@ -60,11 +99,12 @@ enum class TipMarkerStyle : std::uint8_t {
 /// Draw an arrow (shaft + head) from \p tail to \p head, labelled \p label.
 /// \p tail and \p head are given in math convention and remapped via
 /// \p convention before drawing. \p head_frac is the arrowhead length as a
-/// fraction of the shaft length. This is the bare drawing primitive -- it
+/// fraction of the shaft length. \p thickness is the shaft/head line weight
+/// in pixels, applied to both. This is the bare drawing primitive -- it
 /// carries no tip marker or tip label; use \ref draw_vector for a named
 /// vector, which always gets both.
 void draw_arrow(const char* label, Point tail, Point head, AngleConvention convention,
-                double head_frac = 0.12);
+                double head_frac = 0.12, float thickness = 2.0F);
 
 /// Draw a named vector: an arrow from the origin to \p head, plus a tip
 /// marker (styled per \p marker_style) and a tip label showing \p label,
@@ -73,8 +113,9 @@ void draw_arrow(const char* label, Point tail, Point head, AngleConvention conve
 /// vector a "named vector" as opposed to a bare annotation arrow drawn via
 /// \ref draw_arrow directly; \c polar_plotting has no notion of *why* a
 /// vector is named, only that this entry point always marks and labels it.
+/// \p thickness is the shaft/head line weight in pixels.
 void draw_vector(const char* label, Point head, AngleConvention convention,
-                 TipMarkerStyle marker_style, double head_frac = 0.12);
+                 TipMarkerStyle marker_style, double head_frac = 0.12, float thickness = 2.0F);
 
 /// A free-vector annotation: an arrow beginning at an explicit \p start point
 /// (never assumed to originate at the origin) and displaced by \p vector.
@@ -93,9 +134,9 @@ struct AnnotationVector {
 /// so pass a value unique among annotations drawn in the same plot this
 /// frame. \p annotation's \c start and \c vector endpoint are given in math
 /// convention and remapped via \p convention before drawing, exactly like
-/// \ref draw_arrow.
+/// \ref draw_arrow. \p thickness is the shaft/head line weight in pixels.
 void draw_annotation_vector(const char* id, AnnotationVector annotation, AngleConvention convention,
-                            double head_frac = 0.12);
+                            double head_frac = 0.12, float thickness = 2.0F);
 
 /// Visual style for \ref draw_angle_arc: an RGBA color (components in [0, 1])
 /// and a line thickness (pixels). Kept as a plain struct -- rather than an
