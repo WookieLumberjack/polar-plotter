@@ -6,6 +6,7 @@
 
 #include "polar_plotting/polar_plot.hpp"
 #include "ui/angle_convention.hpp"
+#include "ui/polar_display.hpp"
 
 namespace ui {
 
@@ -35,6 +36,13 @@ public:
 private:
     struct VectorInput {
         std::array<float, 2> xy{0.0F, 0.0F};
+        // Transient Amplitude/Phase state while one of those two fields has
+        // ImGui keyboard focus (see draw_vector_input) -- lets a negative
+        // amplitude survive across frames while the Amplitude field is being
+        // typed into, since deriving it fresh from xy every frame would
+        // always canonicalize it back to non-negative.
+        PolarDisplay pending_polar_{};
+        bool polar_active_{false};
     };
 
     std::filesystem::path config_path_;
@@ -75,6 +83,11 @@ private:
 
     void draw_controls();
     void draw_plot() const;
+    // Draws the 4 live-synced Amplitude/Phase/Real/Imag fields for one named
+    // vector (\p label_prefix is "A" or "B"), applying the focus-tracked sync
+    // rule: whichever field has focus this frame is the source of truth, the
+    // rest are recomputed from it.
+    static void draw_vector_input(const char* label_prefix, VectorInput& input);
 };
 
 }  // namespace ui

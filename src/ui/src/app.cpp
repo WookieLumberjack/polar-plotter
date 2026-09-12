@@ -13,6 +13,7 @@
 #include "polar_plotting/polar_plot.hpp"
 #include "ui/config.hpp"
 #include "ui/plot_plan.hpp"
+#include "ui/polar_display.hpp"
 #include "ui/zero_direction.hpp"
 #include "vector_math/vec2.hpp"
 
@@ -42,6 +43,47 @@ bool draw_binary_radio(const char* label_a, const char* label_b, bool is_a) {
 }
 
 }  // namespace
+
+void App::draw_vector_input(const char* label_prefix, VectorInput& input) {
+    PolarDisplay display =
+        input.polar_active_ ? input.pending_polar_ : to_polar_display(to_vec(input.xy));
+
+    const std::string amplitude_label = std::string(label_prefix) + ": Amplitude";
+    const std::string phase_label = std::string(label_prefix) + ": Phase (deg)";
+    const std::string real_label = std::string(label_prefix) + ": Real";
+    const std::string imag_label = std::string(label_prefix) + ": Imag";
+
+    const bool amp_changed =
+        ImGui::InputFloat(amplitude_label.c_str(), &display.amplitude, 0.0F, 0.0F, "%.3f");
+    const bool amp_focused = ImGui::IsItemFocused();
+    const bool phase_changed =
+        ImGui::InputFloat(phase_label.c_str(), &display.phase_deg, 0.0F, 0.0F, "%.2f");
+    const bool phase_focused = ImGui::IsItemFocused();
+    const bool real_changed =
+        ImGui::InputFloat(real_label.c_str(), input.xy.data(), 0.0F, 0.0F, "%.3f");
+    const bool imag_changed =
+        ImGui::InputFloat(imag_label.c_str(), input.xy.data() + 1, 0.0F, 0.0F, "%.3f");
+
+    const bool polar_focused_now = amp_focused || phase_focused;
+
+    if (real_changed || imag_changed) {
+        input.polar_active_ = false;
+        return;
+    }
+    if (amp_changed || phase_changed || polar_focused_now) {
+        input.pending_polar_ = display;
+        const vecmath::Vec2 v = from_polar_display(display);
+        input.xy = {static_cast<float>(v.x), static_cast<float>(v.y)};
+        input.polar_active_ = true;
+        return;
+    }
+    if (input.polar_active_) {
+        const PolarDisplay canonical = canonicalize_polar_display(input.pending_polar_);
+        const vecmath::Vec2 v = from_polar_display(canonical);
+        input.xy = {static_cast<float>(v.x), static_cast<float>(v.y)};
+        input.polar_active_ = false;
+    }
+}
 
 App::App() = default;
 
@@ -91,11 +133,13 @@ void App::render() {
 }
 
 void App::draw_controls() {
-    ImGui::TextUnformatted("Enter two vectors in Cartesian components.");
+    ImGui::TextUnformatted("Enter two vectors as Amplitude/Phase or Real/Imag.");
     ImGui::Spacing();
 
-    ImGui::InputFloat2("A (x, y)", a_.xy.data(), "%.3f");
-    ImGui::InputFloat2("B (x, y)", b_.xy.data(), "%.3f");
+    ImGui::SeparatorText("Vector A");
+    draw_vector_input("A", a_);
+    ImGui::SeparatorText("Vector B");
+    draw_vector_input("B", b_);
 
     ImGui::Spacing();
     ImGui::InputFloat("Zero direction (deg)", &zero_direction_deg_, 1.0F, 10.0F, "%.2f");

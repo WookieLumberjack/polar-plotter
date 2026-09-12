@@ -3,6 +3,7 @@ add_library(ui STATIC
     src/app.cpp
     src/config.cpp
     src/plot_plan.cpp
+    src/polar_display.cpp
     src/zero_direction.cpp)
 
 target_include_directories(ui PUBLIC
