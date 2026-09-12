@@ -238,6 +238,73 @@ enum class HoverTarget : std::uint8_t {
 /// isn't hovered.
 [[nodiscard]] HoverTarget hover_target(Point head_a, Point head_b, AngleConvention convention);
 
+/// This frame's interaction state for one vector driven by
+/// \ref draw_interactive_vector: \c kIdle (untouched), \c kHovered (cursor
+/// within hit range, button up), \c kDragging (button pressed while hovered,
+/// still held -- possibly no longer hovered, since a drag continues even if
+/// the tip moves out from under the cursor), or \c kReleased (was dragging
+/// last frame, button now up -- exactly one frame, then back to \c kIdle or
+/// \c kHovered). See #44/#48.
+enum class InteractionState : std::uint8_t {
+    kIdle,
+    kHovered,
+    kDragging,
+    kReleased,
+};
+
+/// Pure decision logic behind \ref draw_interactive_vector's state machine:
+/// given whether this vector \p was_dragging as of the previous frame
+/// (cross-frame state owned by the caller -- \c polar_plotting keeps none of
+/// its own), whether it \p is_hover_target this frame (from
+/// \ref hover_target), and the mouse's \p mouse_pressed (true only on the
+/// press edge, e.g. ImGui's \c IsMouseClicked) / \p mouse_down (held, e.g.
+/// \c IsMouseDown) state, decides this frame's \ref InteractionState:
+/// dragging continues for as long as the button stays held once started
+/// (regardless of \p is_hover_target), a drag only *starts* on a press that
+/// coincides with \p is_hover_target, and letting go while dragging yields
+/// exactly one \c kReleased frame. Pure function, independent of
+/// ImGui/ImPlot -- the test seam for this state machine.
+[[nodiscard]] InteractionState resolve_interaction_state(bool was_dragging, bool is_hover_target,
+                                                         bool mouse_pressed, bool mouse_down);
+
+/// The fixed, shared marker color used for an actively-dragging tip (see
+/// #44/#48): applies identically to A or B, never per-vector-tinted, and
+/// distinct from both \ref draw_vector's default idle color and
+/// \ref kHoverMarkerColor.
+inline constexpr MarkerColor kDraggingMarkerColor{1.0F, 0.25F, 0.25F, 1.0F};
+
+/// Result of \ref draw_interactive_vector: \p head is the vector's head this
+/// frame, in the same math-convention space \ref draw_vector's \p head
+/// parameter takes (updated live while dragging via \ref from_plotted_point;
+/// frozen at the release position on and after a \c kReleased frame), and
+/// \p state is this frame's \ref InteractionState -- pass it back in as next
+/// frame's \p was_dragging (true iff \c kDragging).
+struct InteractiveVectorResult {
+    Point head;
+    InteractionState state{InteractionState::kIdle};
+};
+
+/// Impure integration point layering #44/#48's hover/drag mechanics on top of
+/// \ref draw_vector for one named vector (A or B). \p head is the vector's
+/// current head (math-convention space); \p is_hover_target is this frame's
+/// hit-test result for *this* vector (from \ref hover_target, computed once
+/// per frame across both A and B, before calling this for either); \p
+/// was_dragging is this same vector's \ref InteractiveVectorResult::state
+/// from last frame, reduced to a bool (see \ref resolve_interaction_state).
+/// Hand-rolled via \c ImGui::IsMouseDown/IsMouseClicked and
+/// \c ImPlot::GetPlotMousePos -- deliberately not \c ImPlot::DragPoint, which
+/// would replace the existing tip marker with its own plain circular marker.
+/// Must be called between \ref begin_vector_plot/\ref end_vector_plot, after
+/// \p is_hover_target for this frame is known. Draws the vector exactly like
+/// \ref draw_vector (arrow + tip marker + tip label), with the tip marker
+/// recolored to \ref kHoverMarkerColor or \ref kDraggingMarkerColor per the
+/// resolved \ref InteractionState (or left at its normal idle color), and
+/// returns the updated head position plus that state for the caller (e.g.
+/// \c ui::App) to store back into its own vector state.
+[[nodiscard]] InteractiveVectorResult draw_interactive_vector(
+    const char* label, Point head, AngleConvention convention, TipMarkerStyle marker_style,
+    bool is_hover_target, bool was_dragging, double head_frac = 0.12, float thickness = 2.0F);
+
 /// A free-vector annotation: an arrow beginning at an explicit \p start point
 /// (never assumed to originate at the origin) and displaced by \p vector.
 /// \c polar_plotting has no notion of what an annotation vector represents --
