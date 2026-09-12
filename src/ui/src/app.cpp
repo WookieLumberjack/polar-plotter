@@ -204,22 +204,20 @@ void App::draw_plot() const {
         .manual_ring_interval = static_cast<double>(manual_ring_interval_),
     });
 
-    // The grid's outer ring is drawn at exactly `extent` -- the same value
-    // handed to begin_vector_plot's ring_interval/ring_count -- so the scale
-    // ruler's tick positions always land exactly on the rings they label.
-    // The axis view itself is inflated a bit beyond `extent` (rather than
-    // shrinking the grid inside an unchanged view, which would move the
-    // rings off the ruler's ticks) so the grid's spoke degree labels, drawn
-    // just outside the outer ring, have room without getting clipped.
+    // The grid's outer ring is drawn at exactly `plan.extent.extent` -- the
+    // same PlotFrame handed to begin_vector_plot and draw_rotation_indicator
+    // -- so the scale ruler's tick positions always land exactly on the
+    // rings they label. begin_vector_plot inflates its own axis view a bit
+    // beyond that extent internally (rather than shrinking the grid inside
+    // an unchanged view, which would move the rings off the ruler's ticks)
+    // so the grid's spoke degree labels, drawn just outside the outer ring,
+    // have room without getting clipped.
     const double extent = plan.extent.extent;
-    constexpr double kViewExtentFactor = 1.15;
-    const double view_extent = extent * kViewExtentFactor;
 
-    if (!polarplot::begin_vector_plot("##polar", view_extent, plan.extent.ring_interval,
-                                      kAutoFitRings)) {
+    if (!polarplot::begin_vector_plot("##polar", plan.extent)) {
         return;
     }
-    polarplot::draw_polar_grid(extent, plan.convention);
+    polarplot::draw_polar_grid(plan.extent, plan.convention);
     polarplot::draw_vector("A", plan.a, plan.convention, marker_style_, /*head_frac=*/0.12,
                            line_width_);
     polarplot::draw_vector("B", plan.b, plan.convention, marker_style_, /*head_frac=*/0.12,
@@ -260,7 +258,7 @@ void App::draw_plot() const {
     rotation_indicator_style.b = 1.0F;
     rotation_indicator_style.a = 1.0F;
     rotation_indicator_style.thickness = line_width_;
-    polarplot::draw_rotation_indicator(extent, plan.rotation_indicator_sweep_sign,
+    polarplot::draw_rotation_indicator(plan.extent, plan.rotation_indicator_sweep_sign,
                                        rotation_indicator_style);
     polarplot::end_vector_plot();
 }
