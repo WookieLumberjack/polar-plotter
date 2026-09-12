@@ -73,6 +73,10 @@ PlotExtent auto_fit_extent(const PlotInputs& inputs) {
     return PlotExtent{.ring_interval = ring_interval, .extent = ring_interval * kAutoFitRings};
 }
 
+PlotExtent manual_extent(double ring_interval) {
+    return PlotExtent{.ring_interval = ring_interval, .extent = ring_interval * kAutoFitRings};
+}
+
 PlotPlan plan_plot(const PlotInputs& inputs) {
     const vecmath::Vec2 sum = inputs.a + inputs.b;
     const vecmath::Vec2 diff = inputs.a - inputs.b;
@@ -84,7 +88,8 @@ PlotPlan plan_plot(const PlotInputs& inputs) {
         .zero_direction = inputs.zero_direction_deg * kDegToRad,
         .angle_sign = compose_angle_sign(inputs.rotation_direction, inputs.measurement_convention),
     };
-    plan.extent = auto_fit_extent(inputs);
+    plan.extent =
+        inputs.auto_scale ? auto_fit_extent(inputs) : manual_extent(inputs.manual_ring_interval);
 
     // Push order below is part of PlotPlan's contract: when both are present,
     // the difference's tip-to-tail annotation always precedes the sum's two,

@@ -66,6 +66,12 @@ private:
     // Pixel thickness of vector shafts/heads and the zero-direction/annotation
     // arcs, shared by all of them -- there is no per-item styling.
     float line_width_{2.0F};
+    // When true (the default), the plot's ring interval/extent auto-fits the
+    // shown vectors' magnitudes; when false, manual_ring_interval_ is used
+    // verbatim via the "Auto-scale" checkbox and slider in draw_controls().
+    bool auto_scale_{true};
+    // Ring interval used verbatim when auto_scale_ is false.
+    float manual_ring_interval_{1.0F};
 
     void draw_controls();
     void draw_plot() const;

@@ -278,3 +278,45 @@ TEST_CASE("plan_plot's extent field matches auto_fit_extent for the same inputs"
     CHECK_THAT(plan.extent.ring_interval, WithinRel(expected.ring_interval));
     CHECK_THAT(plan.extent.extent, WithinRel(expected.extent));
 }
+
+TEST_CASE("manual scale override: manual interval replaces the auto-fit calculation",
+          "[plot_plan]") {
+    // A's magnitude (3) would auto-fit to ring_interval 1.0 (see the
+    // auto_fit_extent test above with the same A) -- picking a very
+    // different manual interval demonstrates it's not being used.
+    const PlotInputs inputs{.a = kA, .b = kB, .auto_scale = false, .manual_ring_interval = 7.5};
+
+    const PlotPlan plan = ui::plan_plot(inputs);
+
+    CHECK_THAT(plan.extent.ring_interval, WithinRel(7.5));
+}
+
+TEST_CASE("manual scale override: extent == interval * kAutoFitRings still holds in manual mode",
+          "[plot_plan]") {
+    for (const double interval : {0.1, 1.0, 3.0, 42.0, 100.0}) {
+        const PlotInputs inputs{
+            .a = kA, .b = kB, .auto_scale = false, .manual_ring_interval = interval};
+        const PlotPlan plan = ui::plan_plot(inputs);
+        CHECK_THAT(plan.extent.ring_interval, WithinRel(interval));
+        CHECK_THAT(plan.extent.extent, WithinRel(interval * ui::kAutoFitRings));
+    }
+}
+
+TEST_CASE(
+    "manual scale override: auto_scale on (default) ignores manual_ring_interval and still "
+    "auto-fits",
+    "[plot_plan]") {
+    const PlotInputs inputs{.a = kA, .b = kB, .manual_ring_interval = 999.0};
+    const PlotPlan plan = ui::plan_plot(inputs);
+    const PlotExtent expected = ui::auto_fit_extent(inputs);
+    CHECK_THAT(plan.extent.ring_interval, WithinRel(expected.ring_interval));
+}
+
+TEST_CASE("manual_extent uses the given interval verbatim and keeps the extent relationship",
+          "[plot_plan]") {
+    for (const double interval : {0.1, 1.0, 3.0, 42.0, 100.0}) {
+        const PlotExtent extent = ui::manual_extent(interval);
+        CHECK_THAT(extent.ring_interval, WithinRel(interval));
+        CHECK_THAT(extent.extent, WithinRel(interval * ui::kAutoFitRings));
+    }
+}

@@ -52,6 +52,8 @@ App::App(std::filesystem::path config_path) : config_path_(std::move(config_path
         show_sum_ = cfg->show_sum;
         show_difference_ = cfg->show_difference;
         line_width_ = cfg->line_width;
+        auto_scale_ = cfg->auto_scale;
+        manual_ring_interval_ = cfg->manual_ring_interval;
     }
 }
 
@@ -61,7 +63,8 @@ void App::save() const {
     if (config_path_.empty()) {
         return;
     }
-    const Config cfg{a_.xy, b_.xy, show_sum_, show_difference_, line_width_};
+    const Config cfg{
+        a_.xy, b_.xy, show_sum_, show_difference_, line_width_, auto_scale_, manual_ring_interval_};
     (void)save_config(config_path_, cfg);
 }
 
@@ -154,6 +157,17 @@ void App::draw_controls() {
 
     ImGui::SliderFloat("Line width", &line_width_, 1.0F, 6.0F, "%.1f");
 
+    ImGui::Spacing();
+    ImGui::Checkbox("Auto-scale", &auto_scale_);
+    if (!auto_scale_) {
+        // Logarithmic: the interval spans three decades (0.1 to 100), and a
+        // plain linear slider would leave the bottom of that range
+        // (differences of a few hundredths) unreachable with any usable
+        // precision.
+        ImGui::SliderFloat("Ring interval", &manual_ring_interval_, 0.1F, 100.0F, "%.3f",
+                           ImGuiSliderFlags_Logarithmic);
+    }
+
     const vecmath::Vec2 a = to_vec(a_.xy);
     const vecmath::Vec2 b = to_vec(b_.xy);
     const vecmath::Polar pa = vecmath::to_polar(a);
@@ -186,6 +200,8 @@ void App::draw_plot() const {
         .measurement_convention = measurement_convention_,
         .zero_direction_input_focused = zero_direction_input_focused_,
         .show_zero_direction_arc_persistent = show_zero_direction_arc_persistent_,
+        .auto_scale = auto_scale_,
+        .manual_ring_interval = static_cast<double>(manual_ring_interval_),
     });
 
     const double extent = plan.extent.extent;
