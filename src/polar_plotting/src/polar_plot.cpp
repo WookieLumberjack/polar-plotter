@@ -1,5 +1,6 @@
 #include "polar_plotting/polar_plot.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -7,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include <imgui.h>
 #include <implot.h>
 
 namespace polarplot {
@@ -113,6 +115,30 @@ Point to_plotted_point(Point p, AngleConvention convention) {
     const double math_angle = std::atan2(p.y, p.x);
     const double plotted_angle = apply_angle_convention(math_angle, convention);
     return {radius * std::cos(plotted_angle), radius * std::sin(plotted_angle)};
+}
+
+Point from_plotted_point(Point p, AngleConvention convention) {
+    const double radius = std::hypot(p.x, p.y);
+    if (radius == 0.0) {
+        return {0.0, 0.0};
+    }
+    const double plotted_angle = std::atan2(p.y, p.x);
+    // Inverse of apply_angle_convention's
+    // `plotted = zero_direction + angle_sign * math_angle`: solve for
+    // math_angle. angle_sign is always +-1, so dividing by it is the same as
+    // multiplying by it.
+    const double math_angle = convention.angle_sign * (plotted_angle - convention.zero_direction);
+    return {radius * std::cos(math_angle), radius * std::sin(math_angle)};
+}
+
+Point snap_angle_to_increment(Point p, double increment_radians) {
+    const double radius = std::hypot(p.x, p.y);
+    if (radius == 0.0) {
+        return {0.0, 0.0};
+    }
+    const double angle = std::atan2(p.y, p.x);
+    const double snapped_angle = std::round(angle / increment_radians) * increment_radians;
+    return {radius * std::cos(snapped_angle), radius * std::sin(snapped_angle)};
 }
 
 std::vector<RulerTick> ruler_ticks(double ring_interval, int ring_count) {
@@ -268,13 +294,17 @@ constexpr float kMarkerSize = 6.0F;
 constexpr ImVec2 kLabelPixelOffset{8.0F, -8.0F};
 constexpr ImVec4 kTipColor{0.9F, 0.9F, 0.9F, 1.0F};
 
-void draw_tip_marker(const char* label, Point tip, TipMarkerStyle marker_style) {
+void draw_tip_marker(const char* label, Point tip, TipMarkerStyle marker_style,
+                     const MarkerColor* marker_color) {
     const std::string id = std::string("##tip_") + label;
     const ImPlotMarker marker =
         (marker_style == TipMarkerStyle::kCrossHair) ? ImPlotMarker_Cross : ImPlotMarker_Circle;
+    const ImVec4 color = (marker_color != nullptr) ? ImVec4(marker_color->r, marker_color->g,
+                                                            marker_color->b, marker_color->a)
+                                                   : kTipColor;
     const ImPlotSpec spec{
-        ImPlotProp_Marker,          marker,    ImPlotProp_MarkerSize,      kMarkerSize,
-        ImPlotProp_MarkerFillColor, kTipColor, ImPlotProp_MarkerLineColor, kTipColor};
+        ImPlotProp_Marker,          marker, ImPlotProp_MarkerSize,      kMarkerSize,
+        ImPlotProp_MarkerFillColor, color,  ImPlotProp_MarkerLineColor, color};
     ImPlot::PlotScatter(id.c_str(), &tip.x, &tip.y, 1, spec);
 }
 
@@ -285,12 +315,137 @@ void draw_tip_label(const char* label, Point tip) {
 }  // namespace
 
 void draw_vector(const char* label, Point head, AngleConvention convention,
-                 TipMarkerStyle marker_style, double head_frac, float thickness) {
+                 TipMarkerStyle marker_style, double head_frac, float thickness,
+                 const MarkerColor* marker_color) {
+    // Draw the tip marker before the arrow shaft/head so it sits behind the
+    // arrowhead and peeks out past the tip, instead of being fully covered
+    // when the marker is larger than the arrowhead.
+    const Point tip = to_plotted_point(head, convention);
+    draw_tip_marker(label, tip, marker_style, marker_color);
+
     draw_arrow(label, Point{0.0, 0.0}, head, convention, head_frac, thickness);
 
-    const Point tip = to_plotted_point(head, convention);
-    draw_tip_marker(label, tip, marker_style);
     draw_tip_label(label, tip);
+}
+
+HoverTarget hover_hit_test(Point mouse, Point tip_a, Point tip_b, double hit_radius) {
+    const double dist_a = std::hypot(mouse.x - tip_a.x, mouse.y - tip_a.y);
+    const double dist_b = std::hypot(mouse.x - tip_b.x, mouse.y - tip_b.y);
+    const bool a_in_range = dist_a <= hit_radius;
+    const bool b_in_range = dist_b <= hit_radius;
+
+    if (!a_in_range && !b_in_range) {
+        return HoverTarget::kNone;
+    }
+    if (a_in_range && !b_in_range) {
+        return HoverTarget::kA;
+    }
+    if (b_in_range && !a_in_range) {
+        return HoverTarget::kB;
+    }
+    // Both in range: nearer tip wins; an exact tie favors A.
+    return (dist_b < dist_a) ? HoverTarget::kB : HoverTarget::kA;
+}
+
+HoverTarget hover_target(Point head_a, Point head_b, AngleConvention convention) {
+    if (!ImPlot::IsPlotHovered()) {
+        return HoverTarget::kNone;
+    }
+
+    const Point tip_a = to_plotted_point(head_a, convention);
+    const Point tip_b = to_plotted_point(head_b, convention);
+    const ImVec2 pixel_a = ImPlot::PlotToPixels(tip_a.x, tip_a.y);
+    const ImVec2 pixel_b = ImPlot::PlotToPixels(tip_b.x, tip_b.y);
+    const ImVec2 mouse = ImGui::GetMousePos();
+
+    const double hit_radius_px = std::max<double>(static_cast<double>(kMarkerSize), 10.0);
+    return hover_hit_test(Point{static_cast<double>(mouse.x), static_cast<double>(mouse.y)},
+                          Point{static_cast<double>(pixel_a.x), static_cast<double>(pixel_a.y)},
+                          Point{static_cast<double>(pixel_b.x), static_cast<double>(pixel_b.y)},
+                          hit_radius_px);
+}
+
+InteractionState resolve_interaction_state(bool was_dragging, bool is_hover_target,
+                                           bool mouse_pressed, bool mouse_down) {
+    if (was_dragging) {
+        return mouse_down ? InteractionState::kDragging : InteractionState::kReleased;
+    }
+    if (is_hover_target && mouse_pressed) {
+        return InteractionState::kDragging;
+    }
+    return is_hover_target ? InteractionState::kHovered : InteractionState::kIdle;
+}
+
+Point clamp_to_extent(Point p, double extent) {
+    return {std::clamp(p.x, -extent, extent), std::clamp(p.y, -extent, extent)};
+}
+
+Point clamp_to_rect(Point p, PixelRect rect) {
+    return {std::clamp(p.x, rect.min.x, rect.max.x), std::clamp(p.y, rect.min.y, rect.max.y)};
+}
+
+InteractiveVectorResult draw_interactive_vector(const char* label, Point head,
+                                                AngleConvention convention,
+                                                TipMarkerStyle marker_style, bool is_hover_target,
+                                                bool was_dragging, double head_frac,
+                                                float thickness, bool auto_scale,
+                                                double visible_extent) {
+    constexpr ImGuiMouseButton kDragButton = ImGuiMouseButton_Left;
+    const bool mouse_down = ImGui::IsMouseDown(kDragButton);
+    const bool mouse_pressed = ImGui::IsMouseClicked(kDragButton);
+    const InteractionState state =
+        resolve_interaction_state(was_dragging, is_hover_target, mouse_pressed, mouse_down);
+
+    Point updated_head = head;
+    if (state == InteractionState::kDragging) {
+        // Clamp the mouse position to the plot canvas' own pixel-space
+        // bounds first (#44/#49): this keeps the drag tracking the cursor
+        // even once it strays outside the canvas (e.g. into a side panel or
+        // outside the window) while the button is still held, rather than
+        // freezing or canceling.
+        const ImVec2 plot_min_px = ImPlot::GetPlotPos();
+        const ImVec2 plot_size_px = ImPlot::GetPlotSize();
+        const ImVec2 mouse_px = ImGui::GetMousePos();
+        const PixelRect plot_rect{
+            Point{static_cast<double>(plot_min_px.x), static_cast<double>(plot_min_px.y)},
+            Point{static_cast<double>(plot_min_px.x + plot_size_px.x),
+                  static_cast<double>(plot_min_px.y + plot_size_px.y)}};
+        const Point clamped_px = clamp_to_rect(
+            Point{static_cast<double>(mouse_px.x), static_cast<double>(mouse_px.y)}, plot_rect);
+        const ImPlotPoint mouse_plot = ImPlot::PixelsToPlot(
+            ImVec2(static_cast<float>(clamped_px.x), static_cast<float>(clamped_px.y)));
+
+        Point plotted{mouse_plot.x, mouse_plot.y};
+        // 15 degree snap increment, in plotted/visual space -- see #50.
+        // Applied before the manual-scale clamp below: snapping rotates the
+        // point (e.g. toward a square's corner), which can otherwise push it
+        // back outside `visible_extent` after an already-clamped point was
+        // snapped, so the clamp must run last to stay the binding
+        // constraint (#49's "never leave the visible extent" invariant).
+        constexpr double kSnapIncrementRadians = kPi / 12.0;
+        if (ImGui::GetIO().KeyShift) {
+            plotted = snap_angle_to_increment(plotted, kSnapIncrementRadians);
+        }
+        // Manual-scale clamp (#44/#49): only when auto-scale is off, so the
+        // existing auto-fit behavior (extent grows with the vector's
+        // magnitude) stays unaffected when auto-scale is on.
+        if (!auto_scale) {
+            plotted = clamp_to_extent(plotted, visible_extent);
+        }
+        updated_head = from_plotted_point(plotted, convention);
+    }
+
+    const MarkerColor* marker_color = nullptr;
+    if (state == InteractionState::kDragging) {
+        marker_color = &kDraggingMarkerColor;
+    } else if (state == InteractionState::kHovered ||
+               (state == InteractionState::kReleased && is_hover_target)) {
+        marker_color = &kHoverMarkerColor;
+    }
+
+    draw_vector(label, updated_head, convention, marker_style, head_frac, thickness, marker_color);
+
+    return {updated_head, state};
 }
 
 void draw_annotation_vector(const char* id, AnnotationVector annotation, AngleConvention convention,

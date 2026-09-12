@@ -44,6 +44,10 @@ private:
         // always canonicalize it back to non-negative.
         PolarDisplay pending_polar_{};
         bool polar_active_{false};
+        // Whether this vector's tip is currently being click-dragged (see
+        // #44/#48): cross-frame state polar_plotting itself keeps none of,
+        // fed back in as draw_interactive_vector's was_dragging next frame.
+        bool dragging_{false};
     };
 
     std::filesystem::path config_path_;
@@ -89,7 +93,17 @@ private:
     float manual_ring_interval_{1.0F};
 
     void draw_controls();
-    void draw_plot() const;
+    // Non-const: click-dragging a vector's tip (see #44/#48) writes the
+    // updated position (and discards any in-progress Amplitude/Phase text
+    // edit) straight back into a_/b_.
+    void draw_plot();
+    // Apply one vector's this-frame draw_interactive_vector result back into
+    // its VectorInput: while dragging or on the release frame, the head
+    // position wins over whatever xy held before, and any pending polar text
+    // edit for that vector is discarded (same precedence as clicking into
+    // Real/Imag -- see draw_vector_input).
+    static void apply_interactive_result(VectorInput& input,
+                                         const polarplot::InteractiveVectorResult& result);
     // Draws the 4 live-synced Amplitude/Phase/Real/Imag fields for one named
     // vector (\p label_prefix is "A" or "B"), applying the focus-tracked sync
     // rule: whichever field has focus this frame is the source of truth, the
