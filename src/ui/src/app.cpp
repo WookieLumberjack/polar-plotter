@@ -204,15 +204,16 @@ void App::draw_plot() const {
         .manual_ring_interval = static_cast<double>(manual_ring_interval_),
     });
 
-    // The grid's outer ring is drawn at exactly `plan.extent.extent` -- the
+    // The grid's outer ring is drawn at exactly `plan.extent.extent()` -- the
     // same PlotFrame handed to begin_vector_plot and draw_rotation_indicator
     // -- so the scale ruler's tick positions always land exactly on the
-    // rings they label. begin_vector_plot inflates its own axis view a bit
-    // beyond that extent internally (rather than shrinking the grid inside
-    // an unchanged view, which would move the rings off the ruler's ticks)
-    // so the grid's spoke degree labels, drawn just outside the outer ring,
-    // have room without getting clipped.
-    const double extent = plan.extent.extent;
+    // rings they label (PlotFrame's constructor keeps the two in sync).
+    // begin_vector_plot inflates its own axis view a bit beyond that extent
+    // internally (rather than shrinking the grid inside an unchanged view,
+    // which would move the rings off the ruler's ticks) so the grid's spoke
+    // degree labels, drawn just outside the outer ring, have room without
+    // getting clipped.
+    const double extent = plan.extent.extent();
 
     if (!polarplot::begin_vector_plot("##polar", plan.extent)) {
         return;

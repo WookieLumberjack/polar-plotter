@@ -64,23 +64,15 @@ polarplot::PlotFrame auto_fit_extent(const PlotInputs& inputs) {
     }
 
     if (max_magnitude <= 0.0) {
-        return polarplot::PlotFrame{.extent = kAutoFitDefaultInterval * kAutoFitRings,
-                                    .ring_interval = kAutoFitDefaultInterval,
-                                    .ring_count = kAutoFitRings};
+        return {kAutoFitDefaultInterval, kAutoFitRings};
     }
 
     const double desired_interval = (max_magnitude * kAutoFitMargin) / kAutoFitRings;
     const double ring_interval = snap_up_to_nice_step(desired_interval);
-    return polarplot::PlotFrame{.extent = ring_interval * kAutoFitRings,
-                                .ring_interval = ring_interval,
-                                .ring_count = kAutoFitRings};
+    return {ring_interval, kAutoFitRings};
 }
 
-polarplot::PlotFrame manual_extent(double ring_interval) {
-    return polarplot::PlotFrame{.extent = ring_interval * kAutoFitRings,
-                                .ring_interval = ring_interval,
-                                .ring_count = kAutoFitRings};
-}
+polarplot::PlotFrame manual_extent(double ring_interval) { return {ring_interval, kAutoFitRings}; }
 
 PlotPlan plan_plot(const PlotInputs& inputs) {
     const vecmath::Vec2 sum = inputs.a + inputs.b;
