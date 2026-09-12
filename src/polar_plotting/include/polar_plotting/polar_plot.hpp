@@ -38,6 +38,23 @@ struct AngleConvention {
 /// its angle via \ref apply_angle_convention. The origin maps to itself.
 [[nodiscard]] Point to_plotted_point(Point p, AngleConvention convention);
 
+/// The two "wing" endpoints of a chevron arrowhead pointing from \p tail
+/// toward \p head; the tip is \p head itself and is not part of this return
+/// value. \c first/\c second are symmetric about the tail-to-head line.
+struct ArrowheadWings {
+    Point first;
+    Point second;
+};
+
+/// Compute the wing endpoints of a chevron arrowhead for an arrow shaft
+/// running from \p tail to \p head, with head length \p head_frac (fraction
+/// of the tail-to-head distance) and a fixed wing half-width relative to
+/// that head length. Pure function -- the test seam for arrowhead geometry,
+/// shared by every arrow-drawing entry point below plus \ref draw_angle_arc.
+/// When \p tail and \p head coincide (zero-length segment), both wings
+/// coincide with \p head.
+[[nodiscard]] ArrowheadWings arrowhead_wing_points(Point tail, Point head, double head_frac);
+
 /// Begin an equal-aspect plot centred on the origin, spanning +/- \p extent on
 /// both axes. Returns true when the plot is visible; call \ref end_vector_plot
 /// exactly once iff this returned true (mirrors ImPlot::BeginPlot).

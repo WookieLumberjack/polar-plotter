@@ -69,6 +69,38 @@ TEST_CASE("angle convention normalizes to a full turn at the 0/2pi boundary",
     }
 }
 
+TEST_CASE("arrowhead_wing_points returns symmetric wings for a known tail/head/fraction",
+          "[polar_plot][arrowhead]") {
+    SECTION("horizontal shaft") {
+        const polarplot::ArrowheadWings wings = polarplot::arrowhead_wing_points(
+            polarplot::Point{0.0, 0.0}, polarplot::Point{10.0, 0.0}, 0.5);
+        REQUIRE_THAT(wings.first.x, WithinAbs(5.0, 1e-12));
+        REQUIRE_THAT(wings.first.y, WithinAbs(-2.0, 1e-12));
+        REQUIRE_THAT(wings.second.x, WithinAbs(5.0, 1e-12));
+        REQUIRE_THAT(wings.second.y, WithinAbs(2.0, 1e-12));
+    }
+
+    SECTION("vertical shaft") {
+        const polarplot::ArrowheadWings wings = polarplot::arrowhead_wing_points(
+            polarplot::Point{0.0, 0.0}, polarplot::Point{0.0, 10.0}, 0.5);
+        REQUIRE_THAT(wings.first.x, WithinAbs(2.0, 1e-12));
+        REQUIRE_THAT(wings.first.y, WithinAbs(5.0, 1e-12));
+        REQUIRE_THAT(wings.second.x, WithinAbs(-2.0, 1e-12));
+        REQUIRE_THAT(wings.second.y, WithinAbs(5.0, 1e-12));
+    }
+}
+
+TEST_CASE("arrowhead_wing_points collapses to the head for a zero-length segment",
+          "[polar_plot][arrowhead]") {
+    const polarplot::Point coincident{3.0, 4.0};
+    const polarplot::ArrowheadWings wings =
+        polarplot::arrowhead_wing_points(coincident, coincident, 0.5);
+    REQUIRE_THAT(wings.first.x, WithinAbs(3.0, 1e-12));
+    REQUIRE_THAT(wings.first.y, WithinAbs(4.0, 1e-12));
+    REQUIRE_THAT(wings.second.x, WithinAbs(3.0, 1e-12));
+    REQUIRE_THAT(wings.second.y, WithinAbs(4.0, 1e-12));
+}
+
 TEST_CASE("to_plotted_point preserves radius and remaps angle", "[polar_plot][angle_convention]") {
     constexpr AngleConvention identity{.zero_direction = 0.0, .angle_sign = 1.0};
     const polarplot::Point p{1.0, 0.0};
