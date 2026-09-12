@@ -1,5 +1,8 @@
+#include <array>
 #include <cmath>
+#include <cstddef>
 #include <numbers>
+#include <vector>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -69,6 +72,38 @@ TEST_CASE("angle convention normalizes to a full turn at the 0/2pi boundary",
     }
 }
 
+TEST_CASE("arrowhead_wing_points returns symmetric wings for a known tail/head/fraction",
+          "[polar_plot][arrowhead]") {
+    SECTION("horizontal shaft") {
+        const polarplot::ArrowheadWings wings = polarplot::arrowhead_wing_points(
+            polarplot::Point{0.0, 0.0}, polarplot::Point{10.0, 0.0}, 0.5);
+        REQUIRE_THAT(wings.first.x, WithinAbs(5.0, 1e-12));
+        REQUIRE_THAT(wings.first.y, WithinAbs(-2.0, 1e-12));
+        REQUIRE_THAT(wings.second.x, WithinAbs(5.0, 1e-12));
+        REQUIRE_THAT(wings.second.y, WithinAbs(2.0, 1e-12));
+    }
+
+    SECTION("vertical shaft") {
+        const polarplot::ArrowheadWings wings = polarplot::arrowhead_wing_points(
+            polarplot::Point{0.0, 0.0}, polarplot::Point{0.0, 10.0}, 0.5);
+        REQUIRE_THAT(wings.first.x, WithinAbs(2.0, 1e-12));
+        REQUIRE_THAT(wings.first.y, WithinAbs(5.0, 1e-12));
+        REQUIRE_THAT(wings.second.x, WithinAbs(-2.0, 1e-12));
+        REQUIRE_THAT(wings.second.y, WithinAbs(5.0, 1e-12));
+    }
+}
+
+TEST_CASE("arrowhead_wing_points collapses to the head for a zero-length segment",
+          "[polar_plot][arrowhead]") {
+    const polarplot::Point coincident{3.0, 4.0};
+    const polarplot::ArrowheadWings wings =
+        polarplot::arrowhead_wing_points(coincident, coincident, 0.5);
+    REQUIRE_THAT(wings.first.x, WithinAbs(3.0, 1e-12));
+    REQUIRE_THAT(wings.first.y, WithinAbs(4.0, 1e-12));
+    REQUIRE_THAT(wings.second.x, WithinAbs(3.0, 1e-12));
+    REQUIRE_THAT(wings.second.y, WithinAbs(4.0, 1e-12));
+}
+
 TEST_CASE("to_plotted_point preserves radius and remaps angle", "[polar_plot][angle_convention]") {
     constexpr AngleConvention identity{.zero_direction = 0.0, .angle_sign = 1.0};
     const polarplot::Point p{1.0, 0.0};
@@ -89,5 +124,74 @@ TEST_CASE("to_plotted_point preserves radius and remaps angle", "[polar_plot][an
             polarplot::to_plotted_point(polarplot::Point{0.0, 0.0}, rotated);
         REQUIRE_THAT(out.x, WithinAbs(0.0, 1e-12));
         REQUIRE_THAT(out.y, WithinAbs(0.0, 1e-12));
+    }
+}
+
+namespace {
+// Mirrors the label-radius bump used by polarplot::spoke_labels: labels sit
+// just outside the outer ring rather than exactly on it.
+constexpr double kLabelRadiusFactor = 1.08;
+}  // namespace
+
+TEST_CASE("spoke_labels places each of the 12 default spokes under the identity convention",
+          "[polar_plot][spoke_labels]") {
+    constexpr AngleConvention identity{.zero_direction = 0.0, .angle_sign = 1.0};
+    constexpr double kMaxRadius = 5.0;
+
+    const std::vector<polarplot::SpokeLabel> labels = polarplot::spoke_labels(kMaxRadius, identity);
+
+    REQUIRE(labels.size() == 12);
+
+    const std::array<const char*, 12> expected_text{"0°",   "30°",  "60°",  "90°",  "120°", "150°",
+                                                    "180°", "210°", "240°", "270°", "300°", "330°"};
+
+    for (std::size_t s = 0; s < labels.size(); ++s) {
+        CAPTURE(s);
+        CHECK(labels[s].text == expected_text[s]);
+
+        const double t = kTwoPi * static_cast<double>(s) / 12.0;
+        const double expected_radius = kMaxRadius * kLabelRadiusFactor;
+        REQUIRE_THAT(labels[s].position.x, WithinAbs(expected_radius * std::cos(t), 1e-9));
+        REQUIRE_THAT(labels[s].position.y, WithinAbs(expected_radius * std::sin(t), 1e-9));
+    }
+}
+
+TEST_CASE("spoke_labels text stays the math angle while position follows the convention",
+          "[polar_plot][spoke_labels]") {
+    constexpr double kMaxRadius = 2.0;
+    constexpr double kExpectedRadius = kMaxRadius * kLabelRadiusFactor;
+
+    SECTION("a rotated zero_direction moves the position but not the '0°' text") {
+        constexpr AngleConvention rotated{.zero_direction = kPi / 2.0, .angle_sign = 1.0};
+        const std::vector<polarplot::SpokeLabel> labels =
+            polarplot::spoke_labels(kMaxRadius, rotated);
+
+        REQUIRE(labels.size() == 12);
+        CHECK(labels[0].text == "0°");
+        REQUIRE_THAT(labels[0].position.x, WithinAbs(0.0, 1e-9));
+        REQUIRE_THAT(labels[0].position.y, WithinAbs(kExpectedRadius, 1e-9));
+
+        CHECK(labels[1].text == "30°");
+        const double expected_angle = (kPi / 2.0) + (kTwoPi / 12.0);
+        REQUIRE_THAT(labels[1].position.x,
+                     WithinAbs(kExpectedRadius * std::cos(expected_angle), 1e-9));
+        REQUIRE_THAT(labels[1].position.y,
+                     WithinAbs(kExpectedRadius * std::sin(expected_angle), 1e-9));
+    }
+
+    SECTION("a flipped angle_sign mirrors which way positions increase, but text is unchanged") {
+        constexpr AngleConvention flipped{.zero_direction = 0.0, .angle_sign = -1.0};
+        const std::vector<polarplot::SpokeLabel> labels =
+            polarplot::spoke_labels(kMaxRadius, flipped);
+
+        REQUIRE(labels.size() == 12);
+        CHECK(labels[0].text == "0°");
+        REQUIRE_THAT(labels[0].position.x, WithinAbs(kExpectedRadius, 1e-9));
+        REQUIRE_THAT(labels[0].position.y, WithinAbs(0.0, 1e-9));
+
+        CHECK(labels[1].text == "30°");
+        const double t = kTwoPi / 12.0;
+        REQUIRE_THAT(labels[1].position.x, WithinAbs(kExpectedRadius * std::cos(-t), 1e-9));
+        REQUIRE_THAT(labels[1].position.y, WithinAbs(kExpectedRadius * std::sin(-t), 1e-9));
     }
 }

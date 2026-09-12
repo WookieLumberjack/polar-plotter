@@ -4,6 +4,7 @@
 #include <cmath>
 #include <numbers>
 #include <string>
+#include <vector>
 
 #include <implot.h>
 
@@ -14,51 +15,75 @@ constexpr double kPi = std::numbers::pi;
 constexpr double kTwoPi = 2.0 * kPi;
 constexpr double kTopAngle = kPi / 2.0;  // plot "up"/12 o'clock, in raw coordinates
 constexpr int kArcSegments = 48;
+// Spoke labels sit just outside the outer ring rather than exactly on it.
+constexpr double kLabelRadiusFactor = 1.08;
 
 // Build the ImPlotSpec used for an arrow's shaft/head: \p line_color when
-// non-null, otherwise ImPlot's default per-item color cycling.
-ImPlotSpec arrow_line_spec(const ImVec4* line_color) {
+// non-null, otherwise ImPlot's default per-item color cycling; \p thickness
+// is always applied as the line weight.
+ImPlotSpec arrow_line_spec(const ImVec4* line_color, float thickness) {
     ImPlotSpec spec;
     if (line_color != nullptr) {
         spec.LineColor = *line_color;
     }
+    spec.LineWeight = thickness;
     return spec;
 }
 
 // Draw an arrow's shaft (\p shaft_id) and head (\p head_id) from \p tail to
 // \p head (already in plotted/drawing coordinates -- callers remap via
 // \ref to_plotted_point first), styled with \p line_color (nullptr for
-// ImPlot's default color cycling).
+// ImPlot's default color cycling) and \p thickness (line weight in pixels,
+// shared by shaft and head).
 void plot_arrow_shape(const std::string& shaft_id, const std::string& head_id, Point tail,
-                      Point head, double head_frac, const ImVec4* line_color) {
+                      Point head, double head_frac, const ImVec4* line_color, float thickness) {
     const std::array<double, 2> sx{tail.x, head.x};
     const std::array<double, 2> sy{tail.y, head.y};
-    ImPlot::PlotLine(shaft_id.c_str(), sx.data(), sy.data(), 2, arrow_line_spec(line_color));
+    ImPlot::PlotLine(shaft_id.c_str(), sx.data(), sy.data(), 2,
+                     arrow_line_spec(line_color, thickness));
+
+    // Resolve whatever color the shaft item actually ended up with -- either
+    // the explicit line_color above, or ImPlot's auto-cycled colormap color
+    // when line_color is nullptr -- and force the head to that same resolved
+    // color. This guarantees shaft and head can never diverge, even though
+    // they're drawn as two separate ImPlot items.
+    const ImVec4 resolved_color = ImPlot::GetLastItemColor();
+
+    if (head.x == tail.x && head.y == tail.y) {
+        return;
+    }
+
+    const ArrowheadWings wings = arrowhead_wing_points(tail, head, head_frac);
+    const std::array<double, 3> hx{wings.first.x, head.x, wings.second.x};
+    const std::array<double, 3> hy{wings.first.y, head.y, wings.second.y};
+
+    ImPlot::PlotLine(head_id.c_str(), hx.data(), hy.data(), 3,
+                     arrow_line_spec(&resolved_color, thickness));
+}
+
+}  // namespace
+
+ArrowheadWings arrowhead_wing_points(Point tail, Point head, double head_frac) {
+    constexpr double kWing = 0.4;  // half-width of the head as a fraction of h
 
     const double dx = head.x - tail.x;
     const double dy = head.y - tail.y;
     const double len = std::hypot(dx, dy);
     if (len == 0.0) {
-        return;
+        return {head, head};
     }
 
     const double ux = dx / len;
     const double uy = dy / len;
     const double h = len * head_frac;
-    constexpr double kWing = 0.4;  // half-width of the head as a fraction of h
 
     const double back_x = head.x - (h * ux);
     const double back_y = head.y - (h * uy);
     const double wing_x = kWing * h * uy;
     const double wing_y = kWing * h * ux;
 
-    const std::array<double, 3> hx{back_x + wing_x, head.x, back_x - wing_x};
-    const std::array<double, 3> hy{back_y - wing_y, head.y, back_y + wing_y};
-
-    ImPlot::PlotLine(head_id.c_str(), hx.data(), hy.data(), 3, arrow_line_spec(line_color));
+    return {Point{back_x + wing_x, back_y - wing_y}, Point{back_x - wing_x, back_y + wing_y}};
 }
-
-}  // namespace
 
 double apply_angle_convention(double math_angle, AngleConvention convention) {
     const double angle = convention.zero_direction + (convention.angle_sign * math_angle);
@@ -137,14 +162,41 @@ void draw_polar_grid(double max_radius, AngleConvention convention, int rings, i
                               kInteriorWeight};
         ImPlot::PlotLine(id.c_str(), sx.data(), sy.data(), 2, spec);
     }
+
+    // Muted, slightly more opaque than the grid lines themselves so the
+    // degree labels stay legible without competing with vectors/tip labels.
+    constexpr ImVec4 kLabelColor{0.65F, 0.65F, 0.65F, 0.9F};
+    for (const SpokeLabel& label : spoke_labels(max_radius, convention, spokes)) {
+        ImPlot::Annotation(label.position.x, label.position.y, kLabelColor, ImVec2(0.0F, 0.0F),
+                           false, "%s", label.text.c_str());
+    }
+}
+
+std::vector<SpokeLabel> spoke_labels(double max_radius, AngleConvention convention,
+                                     int spoke_count) {
+    std::vector<SpokeLabel> labels;
+    labels.reserve(static_cast<std::size_t>(spoke_count));
+
+    const double label_radius = max_radius * kLabelRadiusFactor;
+    for (int s = 0; s < spoke_count; ++s) {
+        const double t = kTwoPi * static_cast<double>(s) / spoke_count;
+        const double plotted = apply_angle_convention(t, convention);
+        const Point position{label_radius * std::cos(plotted), label_radius * std::sin(plotted)};
+
+        const double degrees = t * (180.0 / kPi);
+        const std::string text = std::to_string(static_cast<int>(std::lround(degrees))) + "°";
+
+        labels.push_back(SpokeLabel{position, text});
+    }
+    return labels;
 }
 
 void draw_arrow(const char* label, Point tail, Point head, AngleConvention convention,
-                double head_frac) {
+                double head_frac, float thickness) {
     const Point ptail = to_plotted_point(tail, convention);
     const Point phead = to_plotted_point(head, convention);
     const std::string head_id = std::string("##head_") + label;
-    plot_arrow_shape(label, head_id, ptail, phead, head_frac, /*line_color=*/nullptr);
+    plot_arrow_shape(label, head_id, ptail, phead, head_frac, /*line_color=*/nullptr, thickness);
 }
 
 namespace {
@@ -172,8 +224,8 @@ void draw_tip_label(const char* label, Point tip) {
 }  // namespace
 
 void draw_vector(const char* label, Point head, AngleConvention convention,
-                 TipMarkerStyle marker_style, double head_frac) {
-    draw_arrow(label, Point{0.0, 0.0}, head, convention, head_frac);
+                 TipMarkerStyle marker_style, double head_frac, float thickness) {
+    draw_arrow(label, Point{0.0, 0.0}, head, convention, head_frac, thickness);
 
     const Point tip = to_plotted_point(head, convention);
     draw_tip_marker(label, tip, marker_style);
@@ -181,7 +233,7 @@ void draw_vector(const char* label, Point head, AngleConvention convention,
 }
 
 void draw_annotation_vector(const char* id, AnnotationVector annotation, AngleConvention convention,
-                            double head_frac) {
+                            double head_frac, float thickness) {
     // Muted, semi-transparent gray -- distinct from named vectors, which cycle
     // through ImPlot's saturated default colormap.
     constexpr ImVec4 kAnnotationColor{0.55F, 0.55F, 0.55F, 0.65F};
@@ -193,7 +245,7 @@ void draw_annotation_vector(const char* id, AnnotationVector annotation, AngleCo
 
     const std::string shaft_id = std::string("##annotation_") + id;
     const std::string head_id = std::string("##annotation_head_") + id;
-    plot_arrow_shape(shaft_id, head_id, ptail, phead, head_frac, &kAnnotationColor);
+    plot_arrow_shape(shaft_id, head_id, ptail, phead, head_frac, &kAnnotationColor, thickness);
 }
 
 void draw_angle_arc(double radius, double to_angle, ArcStyle style) {
@@ -218,6 +270,28 @@ void draw_angle_arc(double radius, double to_angle, ArcStyle style) {
     const ImVec4 color{style.r, style.g, style.b, style.a};
     const ImPlotSpec spec{ImPlotProp_LineColor, color, ImPlotProp_LineWeight, style.thickness};
     ImPlot::PlotLine("##angle_arc", ax.data(), ay.data(), kArcSegments + 1, spec);
+
+    // Chevron arrowhead at the to_angle end, pointing along the arc's local
+    // tangent there. The last arc segment is far too short to size the head
+    // off directly (it shrinks with kArcSegments), so build a synthetic tail
+    // that is exactly the desired head length behind the tip, along that same
+    // tangent direction, and hand it to arrowhead_wing_points with
+    // head_frac = 1.0 so the full synthetic length becomes the head length.
+    constexpr double kArcHeadFrac = 0.12;  // head length as a fraction of radius
+    const Point arc_tip{ax[kArcSegments], ay[kArcSegments]};
+    const double tangent_dx = ax[kArcSegments] - ax[kArcSegments - 1];
+    const double tangent_dy = ay[kArcSegments] - ay[kArcSegments - 1];
+    const double tangent_len = std::hypot(tangent_dx, tangent_dy);
+    if (tangent_len > 0.0) {
+        const double head_len = radius * kArcHeadFrac;
+        const double ux = tangent_dx / tangent_len;
+        const double uy = tangent_dy / tangent_len;
+        const Point synthetic_tail{arc_tip.x - (head_len * ux), arc_tip.y - (head_len * uy)};
+        const ArrowheadWings wings = arrowhead_wing_points(synthetic_tail, arc_tip, 1.0);
+        const std::array<double, 3> hx{wings.first.x, arc_tip.x, wings.second.x};
+        const std::array<double, 3> hy{wings.first.y, arc_tip.y, wings.second.y};
+        ImPlot::PlotLine("##angle_arc_head", hx.data(), hy.data(), 3, spec);
+    }
 }
 
 }  // namespace polarplot
