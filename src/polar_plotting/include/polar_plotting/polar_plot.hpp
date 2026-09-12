@@ -7,6 +7,8 @@
 /// the vector_math module so this can be lifted into another project.
 
 #include <cstdint>
+#include <string>
+#include <vector>
 
 namespace polarplot {
 
@@ -64,8 +66,28 @@ struct ArrowheadWings {
 void end_vector_plot();
 
 /// Draw concentric rings and radial spokes out to \p max_radius, laid out
-/// according to \p convention.
+/// according to \p convention, plus a degree label just outside each spoke
+/// (see \ref spoke_labels).
 void draw_polar_grid(double max_radius, AngleConvention convention, int rings = 4, int spokes = 12);
+
+/// One spoke's degree label: \p position is where it should be drawn (in the
+/// plot's own drawing coordinates, already remapped via \p convention) and
+/// \p text is its formatted content, e.g. `"30°"`.
+struct SpokeLabel {
+    Point position;
+    std::string text;
+};
+
+/// Compute the position and text of each spoke's degree label for a grid out
+/// to \p max_radius with \p spoke_count evenly spaced spokes. Spoke `s`'s
+/// label text is always its un-rotated math angle (`s * 360 / spoke_count`
+/// degrees, formatted with a `°` suffix) -- so spoke 0 is always "0°" -- while
+/// its label *position* is remapped via \ref apply_angle_convention under
+/// \p convention, at a radius just beyond \p max_radius, so that the labels'
+/// positions rotate/mirror with the grid while their text always reads the
+/// plain math angle. Pure function -- the test seam for spoke labeling.
+[[nodiscard]] std::vector<SpokeLabel> spoke_labels(double max_radius, AngleConvention convention,
+                                                   int spoke_count = 12);
 
 /// Style of the tip marker drawn at every named vector's tip. A single value
 /// applies to every named vector on a plot -- there is no per-vector styling.
