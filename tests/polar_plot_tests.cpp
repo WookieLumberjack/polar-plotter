@@ -127,6 +127,84 @@ TEST_CASE("to_plotted_point preserves radius and remaps angle", "[polar_plot][an
     }
 }
 
+TEST_CASE("from_plotted_point round-trips with to_plotted_point",
+          "[polar_plot][angle_convention]") {
+    const std::vector<polarplot::Point> points{
+        {0.0, 0.0}, {1.0, 0.0},  {0.0, 1.0},   {-1.0, 0.0}, {0.0, -1.0},
+        {3.0, 4.0}, {-2.0, 5.0}, {-3.0, -4.0}, {5.0, -2.0}, {0.5, 0.25},
+    };
+    const std::vector<AngleConvention> conventions{
+        {.zero_direction = 0.0, .angle_sign = 1.0},
+        {.zero_direction = kPi / 2.0, .angle_sign = 1.0},
+        {.zero_direction = kPi, .angle_sign = 1.0},
+        {.zero_direction = 3.0 * kPi / 2.0, .angle_sign = 1.0},
+        {.zero_direction = 0.0, .angle_sign = -1.0},
+        {.zero_direction = kPi / 3.0, .angle_sign = -1.0},
+        {.zero_direction = -kPi / 4.0, .angle_sign = 1.0},
+        {.zero_direction = -kPi / 4.0, .angle_sign = -1.0},
+    };
+
+    for (const auto& p : points) {
+        for (const auto& convention : conventions) {
+            const polarplot::Point plotted = polarplot::to_plotted_point(p, convention);
+            const polarplot::Point back = polarplot::from_plotted_point(plotted, convention);
+            REQUIRE_THAT(back.x, WithinAbs(p.x, 1e-9));
+            REQUIRE_THAT(back.y, WithinAbs(p.y, 1e-9));
+        }
+    }
+}
+
+TEST_CASE("snap_angle_to_increment preserves radius and snaps to the nearest increment",
+          "[polar_plot][snap]") {
+    constexpr double kIncrement = kPi / 12.0;  // 15 degrees.
+
+    SECTION("exact multiple is unchanged") {
+        const polarplot::Point p{std::cos(kIncrement * 2.0) * 3.0,
+                                 std::sin(kIncrement * 2.0) * 3.0};
+        const polarplot::Point snapped = polarplot::snap_angle_to_increment(p, kIncrement);
+        REQUIRE_THAT(snapped.x, WithinAbs(p.x, 1e-9));
+        REQUIRE_THAT(snapped.y, WithinAbs(p.y, 1e-9));
+    }
+
+    SECTION("angle just past a multiple snaps down to it, radius untouched") {
+        const double radius = 7.0;
+        const double angle = (kIncrement * 3.0) + (kIncrement * 0.1);
+        const polarplot::Point p{radius * std::cos(angle), radius * std::sin(angle)};
+        const polarplot::Point snapped = polarplot::snap_angle_to_increment(p, kIncrement);
+        const double expected_angle = kIncrement * 3.0;
+        REQUIRE_THAT(snapped.x, WithinAbs(radius * std::cos(expected_angle), 1e-9));
+        REQUIRE_THAT(snapped.y, WithinAbs(radius * std::sin(expected_angle), 1e-9));
+        REQUIRE_THAT(std::hypot(snapped.x, snapped.y), WithinAbs(radius, 1e-9));
+    }
+
+    SECTION("angle just before a multiple snaps up to it") {
+        const double radius = 2.5;
+        const double angle = (kIncrement * 5.0) - (kIncrement * 0.2);
+        const polarplot::Point p{radius * std::cos(angle), radius * std::sin(angle)};
+        const polarplot::Point snapped = polarplot::snap_angle_to_increment(p, kIncrement);
+        const double expected_angle = kIncrement * 5.0;
+        REQUIRE_THAT(snapped.x, WithinAbs(radius * std::cos(expected_angle), 1e-9));
+        REQUIRE_THAT(snapped.y, WithinAbs(radius * std::sin(expected_angle), 1e-9));
+    }
+
+    SECTION("wraps correctly near the 0/2pi boundary") {
+        const double radius = 1.0;
+        // 354 degrees, closer to a full turn (360) than to 345; should snap to 0.
+        const double angle = (kIncrement * 23.0) + (kIncrement * 0.6);
+        const polarplot::Point p{radius * std::cos(angle), radius * std::sin(angle)};
+        const polarplot::Point snapped = polarplot::snap_angle_to_increment(p, kIncrement);
+        REQUIRE_THAT(snapped.x, WithinAbs(radius, 1e-9));
+        REQUIRE_THAT(snapped.y, WithinAbs(0.0, 1e-9));
+    }
+
+    SECTION("the origin maps to itself regardless of increment") {
+        const polarplot::Point snapped =
+            polarplot::snap_angle_to_increment(polarplot::Point{0.0, 0.0}, kIncrement);
+        REQUIRE_THAT(snapped.x, WithinAbs(0.0, 1e-12));
+        REQUIRE_THAT(snapped.y, WithinAbs(0.0, 1e-12));
+    }
+}
+
 namespace {
 // Mirrors the label-radius bump used by polarplot::spoke_labels: labels sit
 // just outside the outer ring rather than exactly on it.
@@ -262,6 +340,105 @@ TEST_CASE("PlotFrame's extent is derived from its ring_interval and ring_count",
     }
 }
 
+TEST_CASE("hover_hit_test misses when the mouse is outside both hit radii", "[polar_plot][hover]") {
+    const polarplot::HoverTarget hit =
+        polarplot::hover_hit_test(/*mouse=*/{100.0, 100.0}, /*tip_a=*/{0.0, 0.0},
+                                  /*tip_b=*/{50.0, 0.0}, /*hit_radius=*/10.0);
+    REQUIRE(hit == polarplot::HoverTarget::kNone);
+}
+
+TEST_CASE("hover_hit_test hits A when only A's tip is in range", "[polar_plot][hover]") {
+    const polarplot::HoverTarget hit =
+        polarplot::hover_hit_test(/*mouse=*/{2.0, 0.0}, /*tip_a=*/{0.0, 0.0},
+                                  /*tip_b=*/{50.0, 0.0}, /*hit_radius=*/10.0);
+    REQUIRE(hit == polarplot::HoverTarget::kA);
+}
+
+TEST_CASE("hover_hit_test hits B when only B's tip is in range", "[polar_plot][hover]") {
+    const polarplot::HoverTarget hit =
+        polarplot::hover_hit_test(/*mouse=*/{51.0, 0.0}, /*tip_a=*/{0.0, 0.0},
+                                  /*tip_b=*/{50.0, 0.0}, /*hit_radius=*/10.0);
+    REQUIRE(hit == polarplot::HoverTarget::kB);
+}
+
+TEST_CASE("hover_hit_test picks the nearer tip when both are in range", "[polar_plot][hover]") {
+    // A is at distance 3 from the mouse, B at distance 8 -- both within the
+    // radius 10 hit range, but A is nearer.
+    const polarplot::HoverTarget nearer_a =
+        polarplot::hover_hit_test(/*mouse=*/{0.0, 0.0}, /*tip_a=*/{3.0, 0.0},
+                                  /*tip_b=*/{0.0, 8.0}, /*hit_radius=*/10.0);
+    REQUIRE(nearer_a == polarplot::HoverTarget::kA);
+
+    const polarplot::HoverTarget nearer_b =
+        polarplot::hover_hit_test(/*mouse=*/{0.0, 0.0}, /*tip_a=*/{0.0, 8.0},
+                                  /*tip_b=*/{3.0, 0.0}, /*hit_radius=*/10.0);
+    REQUIRE(nearer_b == polarplot::HoverTarget::kB);
+}
+
+TEST_CASE("hover_hit_test favors A on an exact tie", "[polar_plot][hover]") {
+    const polarplot::HoverTarget hit =
+        polarplot::hover_hit_test(/*mouse=*/{0.0, 0.0}, /*tip_a=*/{5.0, 0.0},
+                                  /*tip_b=*/{0.0, 5.0}, /*hit_radius=*/10.0);
+    REQUIRE(hit == polarplot::HoverTarget::kA);
+}
+
+TEST_CASE("hover_hit_test treats the hit radius boundary as inclusive", "[polar_plot][hover]") {
+    const polarplot::HoverTarget hit =
+        polarplot::hover_hit_test(/*mouse=*/{0.0, 0.0}, /*tip_a=*/{10.0, 0.0},
+                                  /*tip_b=*/{50.0, 0.0}, /*hit_radius=*/10.0);
+    REQUIRE(hit == polarplot::HoverTarget::kA);
+}
+
+TEST_CASE("resolve_interaction_state stays idle when not hovered and not dragging",
+          "[polar_plot][interaction]") {
+    const polarplot::InteractionState state = polarplot::resolve_interaction_state(
+        /*was_dragging=*/false, /*is_hover_target=*/false, /*mouse_pressed=*/false,
+        /*mouse_down=*/false);
+    REQUIRE(state == polarplot::InteractionState::kIdle);
+}
+
+TEST_CASE("resolve_interaction_state reports hovered when targeted but not pressed",
+          "[polar_plot][interaction]") {
+    const polarplot::InteractionState state = polarplot::resolve_interaction_state(
+        /*was_dragging=*/false, /*is_hover_target=*/true, /*mouse_pressed=*/false,
+        /*mouse_down=*/false);
+    REQUIRE(state == polarplot::InteractionState::kHovered);
+}
+
+TEST_CASE("resolve_interaction_state starts dragging on press while hovered",
+          "[polar_plot][interaction]") {
+    const polarplot::InteractionState state = polarplot::resolve_interaction_state(
+        /*was_dragging=*/false, /*is_hover_target=*/true, /*mouse_pressed=*/true,
+        /*mouse_down=*/true);
+    REQUIRE(state == polarplot::InteractionState::kDragging);
+}
+
+TEST_CASE("resolve_interaction_state does not start a drag from a press elsewhere",
+          "[polar_plot][interaction]") {
+    const polarplot::InteractionState state = polarplot::resolve_interaction_state(
+        /*was_dragging=*/false, /*is_hover_target=*/false, /*mouse_pressed=*/true,
+        /*mouse_down=*/true);
+    REQUIRE(state == polarplot::InteractionState::kIdle);
+}
+
+TEST_CASE("resolve_interaction_state keeps dragging while the button stays held",
+          "[polar_plot][interaction]") {
+    // Once dragging, continues regardless of whether the cursor is still
+    // within hit range of the (possibly moved) tip.
+    const polarplot::InteractionState state = polarplot::resolve_interaction_state(
+        /*was_dragging=*/true, /*is_hover_target=*/false, /*mouse_pressed=*/false,
+        /*mouse_down=*/true);
+    REQUIRE(state == polarplot::InteractionState::kDragging);
+}
+
+TEST_CASE("resolve_interaction_state releases when the button is let go mid-drag",
+          "[polar_plot][interaction]") {
+    const polarplot::InteractionState state = polarplot::resolve_interaction_state(
+        /*was_dragging=*/true, /*is_hover_target=*/true, /*mouse_pressed=*/false,
+        /*mouse_down=*/false);
+    REQUIRE(state == polarplot::InteractionState::kReleased);
+}
+
 TEST_CASE("inflate_for_labels inflates a PlotFrame's extent by a fixed headroom factor",
           "[polar_plot][plot_frame]") {
     SECTION("scales proportionally to extent") {
@@ -279,4 +456,56 @@ TEST_CASE("inflate_for_labels inflates a PlotFrame's extent by a fixed headroom 
         REQUIRE_THAT(polarplot::inflate_for_labels(small),
                      WithinAbs(polarplot::inflate_for_labels(large), 1e-12));
     }
+}
+
+// #49: manual-scale drag clamp -- a dragged tip can never leave the currently
+// visible extent when auto-scale is off.
+TEST_CASE("clamp_to_extent leaves a point inside the extent unchanged",
+          "[polar_plot][interaction][clamp]") {
+    const polarplot::Point clamped = polarplot::clamp_to_extent({3.0, -2.0}, /*extent=*/5.0);
+    REQUIRE_THAT(clamped.x, WithinAbs(3.0, 1e-12));
+    REQUIRE_THAT(clamped.y, WithinAbs(-2.0, 1e-12));
+}
+
+TEST_CASE("clamp_to_extent clamps each axis independently to +/- extent",
+          "[polar_plot][interaction][clamp]") {
+    const polarplot::Point clamped = polarplot::clamp_to_extent({10.0, -10.0}, /*extent=*/5.0);
+    REQUIRE_THAT(clamped.x, WithinAbs(5.0, 1e-12));
+    REQUIRE_THAT(clamped.y, WithinAbs(-5.0, 1e-12));
+}
+
+TEST_CASE("clamp_to_extent treats the boundary as inclusive", "[polar_plot][interaction][clamp]") {
+    const polarplot::Point clamped = polarplot::clamp_to_extent({5.0, 5.0}, /*extent=*/5.0);
+    REQUIRE_THAT(clamped.x, WithinAbs(5.0, 1e-12));
+    REQUIRE_THAT(clamped.y, WithinAbs(5.0, 1e-12));
+}
+
+// #49: mouse-leaves-canvas clamp -- a drag keeps tracking the mouse position
+// clamped to the plot's pixel-space edge rather than freezing or canceling.
+TEST_CASE("clamp_to_rect leaves a point inside the rect unchanged",
+          "[polar_plot][interaction][clamp]") {
+    constexpr polarplot::PixelRect rect{/*min=*/{0.0, 0.0}, /*max=*/{100.0, 200.0}};
+    const polarplot::Point clamped = polarplot::clamp_to_rect({50.0, 150.0}, rect);
+    REQUIRE_THAT(clamped.x, WithinAbs(50.0, 1e-12));
+    REQUIRE_THAT(clamped.y, WithinAbs(150.0, 1e-12));
+}
+
+TEST_CASE("clamp_to_rect clamps a point beyond the rect to its nearest edge",
+          "[polar_plot][interaction][clamp]") {
+    constexpr polarplot::PixelRect rect{/*min=*/{0.0, 0.0}, /*max=*/{100.0, 200.0}};
+
+    const polarplot::Point beyond_max = polarplot::clamp_to_rect({150.0, 250.0}, rect);
+    REQUIRE_THAT(beyond_max.x, WithinAbs(100.0, 1e-12));
+    REQUIRE_THAT(beyond_max.y, WithinAbs(200.0, 1e-12));
+
+    const polarplot::Point beyond_min = polarplot::clamp_to_rect({-50.0, -20.0}, rect);
+    REQUIRE_THAT(beyond_min.x, WithinAbs(0.0, 1e-12));
+    REQUIRE_THAT(beyond_min.y, WithinAbs(0.0, 1e-12));
+}
+
+TEST_CASE("clamp_to_rect clamps each axis independently", "[polar_plot][interaction][clamp]") {
+    constexpr polarplot::PixelRect rect{/*min=*/{0.0, 0.0}, /*max=*/{100.0, 200.0}};
+    const polarplot::Point clamped = polarplot::clamp_to_rect({150.0, 100.0}, rect);
+    REQUIRE_THAT(clamped.x, WithinAbs(100.0, 1e-12));
+    REQUIRE_THAT(clamped.y, WithinAbs(100.0, 1e-12));
 }

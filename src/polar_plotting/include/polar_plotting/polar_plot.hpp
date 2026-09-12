@@ -80,6 +80,23 @@ private:
 /// its angle via \ref apply_angle_convention. The origin maps to itself.
 [[nodiscard]] Point to_plotted_point(Point p, AngleConvention convention);
 
+/// The pure inverse of \ref to_plotted_point: given \p p already in
+/// plotted/visual space, undo the zero-direction/angle-sign remap and
+/// recover the point in raw math-convention space. Preserves radius; the
+/// origin maps to itself. Satisfies
+/// `from_plotted_point(to_plotted_point(p, c), c) == p` for any \p p and
+/// convention \p c (within floating-point tolerance).
+[[nodiscard]] Point from_plotted_point(Point p, AngleConvention convention);
+
+/// Snap \p p's angle to the nearest multiple of \p increment_radians,
+/// preserving \p p's radius exactly -- only the angle changes. \p p is taken
+/// in whatever space it's given (see #50: callers snap a point already in
+/// plotted/visual space, i.e. after \ref to_plotted_point's remap, so the
+/// snap aligns with the grid as drawn rather than the raw math angle). The
+/// origin maps to itself (no angle to snap at zero radius). Pure function --
+/// the test seam for shift-to-snap angle logic.
+[[nodiscard]] Point snap_angle_to_increment(Point p, double increment_radians);
+
 /// The two "wing" endpoints of a chevron arrowhead pointing from \p tail
 /// toward \p head; the tip is \p head itself and is not part of this return
 /// value. \c first/\c second are symmetric about the tail-to-head line.
@@ -168,6 +185,21 @@ enum class TipMarkerStyle : std::uint8_t {
 void draw_arrow(const char* label, Point tail, Point head, AngleConvention convention,
                 double head_frac = 0.12, float thickness = 2.0F);
 
+/// RGBA color override for a named vector's tip marker (components in
+/// [0, 1]). Kept as a plain struct -- rather than an ImGui/ImPlot type -- so
+/// this header doesn't need to include their headers, matching \ref ArcStyle.
+struct MarkerColor {
+    float r{0.0F};
+    float g{0.0F};
+    float b{0.0F};
+    float a{1.0F};
+};
+
+/// The fixed, shared marker color used for a hovered tip (see #44/#47):
+/// applies identically to A or B, never per-vector-tinted, and is distinct
+/// from \ref draw_vector's default idle marker color.
+inline constexpr MarkerColor kHoverMarkerColor{1.0F, 0.85F, 0.2F, 1.0F};
+
 /// Draw a named vector: an arrow from the origin to \p head, plus a tip
 /// marker (styled per \p marker_style) and a tip label showing \p label,
 /// both drawn unconditionally -- even when \p head is exactly the origin, in
@@ -175,9 +207,158 @@ void draw_arrow(const char* label, Point tail, Point head, AngleConvention conve
 /// vector a "named vector" as opposed to a bare annotation arrow drawn via
 /// \ref draw_arrow directly; \c polar_plotting has no notion of *why* a
 /// vector is named, only that this entry point always marks and labels it.
-/// \p thickness is the shaft/head line weight in pixels.
+/// \p thickness is the shaft/head line weight in pixels. \p marker_color, when
+/// non-null, overrides the tip marker's fill/line color (e.g. with
+/// \ref kHoverMarkerColor for a hover cue); it is left null by every existing
+/// caller, so the default appearance (today's fixed idle color) is unchanged.
+/// The override applies only to the tip marker -- the shaft, arrowhead, and
+/// tip label always keep their normal color.
 void draw_vector(const char* label, Point head, AngleConvention convention,
-                 TipMarkerStyle marker_style, double head_frac = 0.12, float thickness = 2.0F);
+                 TipMarkerStyle marker_style, double head_frac = 0.12, float thickness = 2.0F,
+                 const MarkerColor* marker_color = nullptr);
+
+/// Which of A's or B's tip (if either) is the target of a hover/drag
+/// interaction this frame; \c kNone when neither is within hit range of the
+/// cursor. See #44 for the broader interaction state machine this is one
+/// piece of.
+enum class HoverTarget : std::uint8_t {
+    kNone,
+    kA,
+    kB,
+};
+
+/// Pure hit-test: given the mouse position and both named vectors' tips
+/// (\p mouse, \p tip_a, \p tip_b -- all three in the same consistent space,
+/// e.g. pixel coordinates, so plain Euclidean distance is meaningful), decide
+/// which tip (if any) is hit within \p hit_radius of the mouse, applying
+/// #44's overlap tie-break: when both A's and B's tips are within
+/// \p hit_radius of the mouse, the nearer one wins; an exact tie (equal
+/// distance) favors A. Independent of ImGui/ImPlot state -- the test seam for
+/// hover/drag hit-testing.
+[[nodiscard]] HoverTarget hover_hit_test(Point mouse, Point tip_a, Point tip_b, double hit_radius);
+
+/// Impure integration point: resolves \p head_a/\p head_b (math-convention
+/// space, like \ref draw_vector's \p head) to their on-screen tip positions
+/// under \p convention, queries the live mouse position, and applies
+/// \ref hover_hit_test with the fixed pixel hit-radius rule from #44
+/// (`max(marker's own pixel size, 10px)`). Must be called between
+/// \ref begin_vector_plot / \ref end_vector_plot this frame, after A and B's
+/// positions for the frame are known. Returns \c kNone when the plot itself
+/// isn't hovered.
+[[nodiscard]] HoverTarget hover_target(Point head_a, Point head_b, AngleConvention convention);
+
+/// This frame's interaction state for one vector driven by
+/// \ref draw_interactive_vector: \c kIdle (untouched), \c kHovered (cursor
+/// within hit range, button up), \c kDragging (button pressed while hovered,
+/// still held -- possibly no longer hovered, since a drag continues even if
+/// the tip moves out from under the cursor), or \c kReleased (was dragging
+/// last frame, button now up -- exactly one frame, then back to \c kIdle or
+/// \c kHovered). See #44/#48.
+enum class InteractionState : std::uint8_t {
+    kIdle,
+    kHovered,
+    kDragging,
+    kReleased,
+};
+
+/// Pure decision logic behind \ref draw_interactive_vector's state machine:
+/// given whether this vector \p was_dragging as of the previous frame
+/// (cross-frame state owned by the caller -- \c polar_plotting keeps none of
+/// its own), whether it \p is_hover_target this frame (from
+/// \ref hover_target), and the mouse's \p mouse_pressed (true only on the
+/// press edge, e.g. ImGui's \c IsMouseClicked) / \p mouse_down (held, e.g.
+/// \c IsMouseDown) state, decides this frame's \ref InteractionState:
+/// dragging continues for as long as the button stays held once started
+/// (regardless of \p is_hover_target), a drag only *starts* on a press that
+/// coincides with \p is_hover_target, and letting go while dragging yields
+/// exactly one \c kReleased frame. Pure function, independent of
+/// ImGui/ImPlot -- the test seam for this state machine.
+[[nodiscard]] InteractionState resolve_interaction_state(bool was_dragging, bool is_hover_target,
+                                                         bool mouse_pressed, bool mouse_down);
+
+/// The fixed, shared marker color used for an actively-dragging tip (see
+/// #44/#48): applies identically to A or B, never per-vector-tinted, and
+/// distinct from both \ref draw_vector's default idle color and
+/// \ref kHoverMarkerColor.
+inline constexpr MarkerColor kDraggingMarkerColor{1.0F, 0.25F, 0.25F, 1.0F};
+
+/// Clamp \p p's x and y independently into `[-extent, extent]`, matching the
+/// square (equal-aspect) axis view \ref begin_vector_plot sets up. Used by
+/// \ref draw_interactive_vector to enforce #44/#49's manual-scale drag
+/// clamp: with auto-scale off, a dragged tip can never leave the currently
+/// visible extent. Pure function -- the test seam for this clamp.
+[[nodiscard]] Point clamp_to_extent(Point p, double extent);
+
+/// A pixel-space rectangle (e.g. the plot canvas' on-screen bounds), given as
+/// its \p min (top-left) and \p max (bottom-right) corners.
+struct PixelRect {
+    Point min;
+    Point max;
+};
+
+/// Clamp \p p into \p rect, independently on each axis. Used by
+/// \ref draw_interactive_vector to enforce #44/#49's "mouse leaves the
+/// canvas" rule: a drag keeps tracking the mouse position clamped to the
+/// plot's pixel-space edge, rather than freezing or canceling, once the
+/// cursor strays outside the plot canvas while the button is still held.
+/// Pure function -- the test seam for this clamp.
+[[nodiscard]] Point clamp_to_rect(Point p, PixelRect rect);
+
+/// Result of \ref draw_interactive_vector: \p head is the vector's head this
+/// frame, in the same math-convention space \ref draw_vector's \p head
+/// parameter takes (updated live while dragging via \ref from_plotted_point;
+/// frozen at the release position on and after a \c kReleased frame), and
+/// \p state is this frame's \ref InteractionState -- pass it back in as next
+/// frame's \p was_dragging (true iff \c kDragging).
+struct InteractiveVectorResult {
+    Point head;
+    InteractionState state{InteractionState::kIdle};
+};
+
+/// Impure integration point layering #44/#48's hover/drag mechanics on top of
+/// \ref draw_vector for one named vector (A or B). \p head is the vector's
+/// current head (math-convention space); \p is_hover_target is this frame's
+/// hit-test result for *this* vector (from \ref hover_target, computed once
+/// per frame across both A and B, before calling this for either); \p
+/// was_dragging is this same vector's \ref InteractiveVectorResult::state
+/// from last frame, reduced to a bool (see \ref resolve_interaction_state).
+/// Hand-rolled via \c ImGui::IsMouseDown/IsMouseClicked and
+/// \c ImPlot::GetPlotMousePos -- deliberately not \c ImPlot::DragPoint, which
+/// would replace the existing tip marker with its own plain circular marker.
+/// Must be called between \ref begin_vector_plot/\ref end_vector_plot, after
+/// \p is_hover_target for this frame is known. Draws the vector exactly like
+/// \ref draw_vector (arrow + tip marker + tip label), with the tip marker
+/// recolored to \ref kHoverMarkerColor or \ref kDraggingMarkerColor per the
+/// resolved \ref InteractionState (or left at its normal idle color), and
+/// returns the updated head position plus that state for the caller (e.g.
+/// \c ui::App) to store back into its own vector state.
+///
+/// While dragging (#44/#49), the live mouse position is first clamped in
+/// pixel space to the plot canvas' own on-screen bounds (via
+/// \ref clamp_to_rect) -- so a cursor that strays outside the canvas (e.g.
+/// into a side panel, or outside the window) while the button is still held
+/// keeps updating the vector from the position clamped to the plot's edge,
+/// rather than freezing or canceling the drag -- and then, only when
+/// \p auto_scale is false, additionally clamped in plot space to
+/// `[-visible_extent, visible_extent]` on both axes (via
+/// \ref clamp_to_extent) so a manual-scale drag can never move the tip past
+/// the currently visible extent. When \p auto_scale is true (the default),
+/// \p visible_extent is ignored and this second clamp does not apply, so the
+/// existing auto-fit behavior (extent grows with the vector's magnitude) is
+/// unaffected.
+///
+/// Shift-to-snap (#50): while dragging, holding Shift (checked live every
+/// frame via \c ImGui::GetIO().KeyShift) snaps the head's angle to the
+/// nearest 15 degree increment in plotted/visual space -- i.e. the drag
+/// position is snapped via \ref snap_angle_to_increment *after*
+/// \ref to_plotted_point's remap and before converting back with
+/// \ref from_plotted_point, so it aligns with the grid as drawn regardless
+/// of \p convention. Magnitude/radius is never snapped. Releasing Shift
+/// mid-drag takes effect the very next frame.
+[[nodiscard]] InteractiveVectorResult draw_interactive_vector(
+    const char* label, Point head, AngleConvention convention, TipMarkerStyle marker_style,
+    bool is_hover_target, bool was_dragging, double head_frac = 0.12, float thickness = 2.0F,
+    bool auto_scale = true, double visible_extent = 0.0);
 
 /// A free-vector annotation: an arrow beginning at an explicit \p start point
 /// (never assumed to originate at the origin) and displaced by \p vector.

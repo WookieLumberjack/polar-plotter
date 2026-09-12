@@ -45,6 +45,24 @@ bool draw_binary_radio(const char* label_a, const char* label_b, bool is_a) {
     return is_a;
 }
 
+// Live drag tooltip (#44/#51): shown only while \p label's vector is actively
+// dragging, near the cursor, with the same Amplitude/Phase/Real/Imag
+// labels/format used by the vector input fields and derived-vectors table.
+// Amplitude/Phase conversion is a ui-layer concern (ui::to_polar_display), so
+// this is drawn here rather than pushed down into polar_plotting, which knows
+// only raw Point/Vec2 and has no notion of that display convention.
+void draw_drag_tooltip(const char* label, polarplot::Point head) {
+    const vecmath::Vec2 v{head.x, head.y};
+    const PolarDisplay display = to_polar_display(v);
+    ImGui::BeginTooltip();
+    ImGui::Text("%s", label);
+    ImGui::Text("Amplitude: %.3f", static_cast<double>(display.amplitude));
+    ImGui::Text("Phase (deg): %.2f", static_cast<double>(display.phase_deg));
+    ImGui::Text("Real: %.3f", v.x);
+    ImGui::Text("Imag: %.3f", v.y);
+    ImGui::EndTooltip();
+}
+
 }  // namespace
 
 void App::draw_vector_input(const char* label_prefix, VectorInput& input) {
@@ -183,18 +201,24 @@ void App::render() {
     const float pad = 16.0F;
     const float controls_w = 380.0F;
 
-    ImGui::SetNextWindowPos({vp->WorkPos.x + pad, vp->WorkPos.y + pad}, ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize({controls_w, vp->WorkSize.y - (2 * pad)}, ImGuiCond_FirstUseEver);
-    ImGui::Begin("Vectors");
-    draw_controls();
-    ImGui::End();
-
+    // Plot drawn first: dragging a tip (see #44/#48) writes the updated
+    // position straight back into a_/b_ inside draw_plot(), so drawing the
+    // plot before the controls window lets that same frame's Amplitude/
+    // Phase/Real/Imag fields and derived-vectors table read the fresh
+    // position -- window Begin/End order doesn't otherwise matter to either
+    // window's own widgets.
     ImGui::SetNextWindowPos({vp->WorkPos.x + controls_w + (2 * pad), vp->WorkPos.y + pad},
                             ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize({vp->WorkSize.x - controls_w - (3 * pad), vp->WorkSize.y - (2 * pad)},
                              ImGuiCond_FirstUseEver);
     ImGui::Begin("Polar plot");
     draw_plot();
+    ImGui::End();
+
+    ImGui::SetNextWindowPos({vp->WorkPos.x + pad, vp->WorkPos.y + pad}, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize({controls_w, vp->WorkSize.y - (2 * pad)}, ImGuiCond_FirstUseEver);
+    ImGui::Begin("Vectors");
+    draw_controls();
     ImGui::End();
 }
 
@@ -316,7 +340,20 @@ void App::draw_controls() {
     draw_derived_vectors_table(derived);
 }
 
-void App::draw_plot() const {
+void App::apply_interactive_result(VectorInput& input,
+                                   const polarplot::InteractiveVectorResult& result) {
+    input.dragging_ = (result.state == polarplot::InteractionState::kDragging);
+    if (result.state == polarplot::InteractionState::kDragging ||
+        result.state == polarplot::InteractionState::kReleased) {
+        // Starting (and continuing) a drag overrides any in-progress
+        // Amplitude/Phase text edit for this vector -- same precedence as
+        // clicking into Real/Imag today (see draw_vector_input).
+        input.xy = {static_cast<float>(result.head.x), static_cast<float>(result.head.y)};
+        input.polar_active_ = false;
+    }
+}
+
+void App::draw_plot() {
     const vecmath::Vec2 a = to_vec(a_.xy);
     const vecmath::Vec2 b = to_vec(b_.xy);
 
@@ -356,10 +393,36 @@ void App::draw_plot() const {
         return;
     }
     polarplot::draw_polar_grid(plan.extent, plan.convention);
-    polarplot::draw_vector("A", plan.a, plan.convention, marker_style_, /*head_frac=*/0.12,
-                           line_width_);
-    polarplot::draw_vector("B", plan.b, plan.convention, marker_style_, /*head_frac=*/0.12,
-                           line_width_);
+
+    // Hover/click-drag for A/B (see #44/#47/#48): whichever tip is under the
+    // cursor is this frame's hit-test target; draw_interactive_vector turns
+    // that plus each vector's own carried-over dragging state into this
+    // frame's marker color, head position, and interaction state.
+    const polarplot::HoverTarget hovered = polarplot::hover_target(plan.a, plan.b, plan.convention);
+
+    // Manual-scale drag clamp (#44/#49): with auto-scale off, `extent`
+    // (this same PlotFrame's extent, already used above for the grid/axis
+    // view) never grows with the dragged vector's magnitude, so passing it
+    // through as the visible-extent clamp keeps a manual-scale drag from
+    // moving the tip past what's currently visible. Ignored while
+    // auto_scale_ is true.
+    const polarplot::InteractiveVectorResult a_result = polarplot::draw_interactive_vector(
+        "A", plan.a, plan.convention, marker_style_, hovered == polarplot::HoverTarget::kA,
+        a_.dragging_, /*head_frac=*/0.12, line_width_, auto_scale_, extent);
+    const polarplot::InteractiveVectorResult b_result = polarplot::draw_interactive_vector(
+        "B", plan.b, plan.convention, marker_style_, hovered == polarplot::HoverTarget::kB,
+        b_.dragging_, /*head_frac=*/0.12, line_width_, auto_scale_, extent);
+    // Live drag tooltip (#44/#51): only while actively dragging, not during a
+    // plain pre-drag hover -- disappears the instant the drag ends, since a
+    // kReleased/kIdle/kHovered frame no longer matches kDragging here.
+    if (a_result.state == polarplot::InteractionState::kDragging) {
+        draw_drag_tooltip("A", a_result.head);
+    }
+    if (b_result.state == polarplot::InteractionState::kDragging) {
+        draw_drag_tooltip("B", b_result.head);
+    }
+    apply_interactive_result(a_, a_result);
+    apply_interactive_result(b_, b_result);
     if (plan.difference) {
         polarplot::draw_vector("A - B", *plan.difference, plan.convention, marker_style_,
                                /*head_frac=*/0.12, line_width_);
