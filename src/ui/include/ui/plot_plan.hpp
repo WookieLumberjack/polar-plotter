@@ -49,9 +49,9 @@ struct PlotInputs {
 };
 
 /// Number of concentric rings draw_polar_grid lays the auto-fit view out
-/// over. `polarplot::PlotFrame::extent` and `::ring_interval` are always
-/// related by `extent == ring_interval * kAutoFitRings`, and
-/// `PlotFrame::ring_count` is always `kAutoFitRings`.
+/// over. `polarplot::PlotFrame::extent()` and `::ring_interval()` are always
+/// related by `extent() == ring_interval() * kAutoFitRings`, and
+/// `PlotFrame::ring_count()` is always `kAutoFitRings`.
 inline constexpr int kAutoFitRings = 4;
 
 /// Computes this frame's auto-fit extent/ring-interval/ring-count from the
