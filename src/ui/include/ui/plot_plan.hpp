@@ -98,8 +98,10 @@ struct PlotPlan {
     // docs/adr/0001-polar-plotting-receives-only-composed-angle-sign.md).
     double rotation_indicator_sweep_sign{1.0};
     // See auto_fit_extent -- the same values must drive both draw_polar_grid
-    // and the plot's axis limits so they never disagree.
-    polarplot::PlotFrame extent;
+    // and the plot's axis limits so they never disagree. Default matches
+    // auto_fit_extent's degenerate-input fallback; plan_plot always
+    // overwrites this before returning.
+    polarplot::PlotFrame extent{1.0, kAutoFitRings};
 };
 
 /// Decide this frame's PlotPlan from \p inputs. Pure -- internally calls into
