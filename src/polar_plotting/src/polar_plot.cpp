@@ -22,6 +22,10 @@ constexpr int kArcSegments = 48;
 constexpr double kRotationIndicatorSweep = kPi / 6.0;  // 30 degrees
 // Spoke labels sit just outside the outer ring rather than exactly on it.
 constexpr double kLabelRadiusFactor = 1.08;
+// Headroom the axis view needs beyond a PlotFrame's extent so spoke-degree
+// labels (drawn at kLabelRadiusFactor * extent, plus their own text width)
+// aren't clipped by the plot's axis limits.
+constexpr double kLabelPaddingFactor = 1.15;
 
 // Build the ImPlotSpec used for an arrow's shaft/head: \p line_color when
 // non-null, otherwise ImPlot's default per-item color cycling; \p thickness
@@ -90,6 +94,8 @@ ArrowheadWings arrowhead_wing_points(Point tail, Point head, double head_frac) {
     return {Point{back_x + wing_x, back_y - wing_y}, Point{back_x - wing_x, back_y + wing_y}};
 }
 
+double inflate_for_labels(PlotFrame frame) { return frame.extent * kLabelPaddingFactor; }
+
 double apply_angle_convention(double math_angle, AngleConvention convention) {
     const double angle = convention.zero_direction + (convention.angle_sign * math_angle);
     double wrapped = std::fmod(angle, kTwoPi);
@@ -121,7 +127,8 @@ std::vector<RulerTick> ruler_ticks(double ring_interval, int ring_count) {
     return ticks;
 }
 
-bool begin_vector_plot(const char* title, double extent, double ring_interval, int ring_count) {
+bool begin_vector_plot(const char* title, PlotFrame frame) {
+    const double extent = inflate_for_labels(frame);
     // Suppress the rectangular plot-area border ImPlot draws by default; the
     // circular grid (see draw_polar_grid) is the only boundary we want
     // visible. Popped in end_vector_plot -- only when BeginPlot succeeds,
@@ -152,7 +159,7 @@ bool begin_vector_plot(const char* title, double extent, double ring_interval, i
     ImPlot::SetupAxis(ImAxis_Y2, nullptr, kRulerFlags);
     ImPlot::SetupAxisLimits(ImAxis_Y2, -extent, extent, ImPlotCond_Always);
 
-    const std::vector<RulerTick> ticks = ruler_ticks(ring_interval, ring_count);
+    const std::vector<RulerTick> ticks = ruler_ticks(frame.ring_interval, frame.ring_count);
     std::vector<double> positions;
     std::vector<std::string> label_strings;
     std::vector<const char*> label_pointers;
@@ -176,13 +183,16 @@ void end_vector_plot() {
     ImPlot::PopStyleColor();
 }
 
-void draw_polar_grid(double max_radius, AngleConvention convention, int rings, int spokes) {
+void draw_polar_grid(PlotFrame frame, AngleConvention convention, int spokes) {
     // One muted, fixed color for the whole grid (no per-ring colormap
     // cycling); the outermost ring is drawn heavier than the interior rings
     // and spokes so the plot's boundary reads clearly without a bounding box.
     constexpr ImVec4 kGridColor{0.5F, 0.5F, 0.5F, 0.5F};
     constexpr float kInteriorWeight = 1.0F;
     constexpr float kOuterWeight = 2.5F;
+
+    const double max_radius = frame.extent;
+    const int rings = frame.ring_count;
 
     constexpr int kSegments = 96;
     std::array<double, kSegments> cx{};
@@ -369,9 +379,9 @@ RotationIndicatorArc rotation_indicator_arc(double sweep_sign) {
     return {.from_angle = kRightAngle, .to_angle = kRightAngle + (sign * kRotationIndicatorSweep)};
 }
 
-void draw_rotation_indicator(double radius, double sweep_sign, ArcStyle style) {
+void draw_rotation_indicator(PlotFrame frame, double sweep_sign, ArcStyle style) {
     const RotationIndicatorArc arc = rotation_indicator_arc(sweep_sign);
-    draw_arc_with_head(radius, arc.from_angle, arc.to_angle, style, "##rotation_indicator",
+    draw_arc_with_head(frame.extent, arc.from_angle, arc.to_angle, style, "##rotation_indicator",
                        "##rotation_indicator_head");
 }
 
