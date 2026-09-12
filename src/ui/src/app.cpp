@@ -144,6 +144,10 @@ App::App(std::filesystem::path config_path) : config_path_(std::move(config_path
         b_.xy = cfg->b;
         show_sum_ = cfg->show_sum;
         show_difference_ = cfg->show_difference;
+        show_difference_ba_ = cfg->show_difference_ba;
+        show_product_ = cfg->show_product;
+        show_quotient_ab_ = cfg->show_quotient_ab;
+        show_quotient_ba_ = cfg->show_quotient_ba;
         line_width_ = cfg->line_width;
         auto_scale_ = cfg->auto_scale;
         manual_ring_interval_ = cfg->manual_ring_interval;
@@ -157,7 +161,18 @@ void App::save() const {
         return;
     }
     const Config cfg{
-        a_.xy, b_.xy, show_sum_, show_difference_, line_width_, auto_scale_, manual_ring_interval_};
+        .a = a_.xy,
+        .b = b_.xy,
+        .show_sum = show_sum_,
+        .show_difference = show_difference_,
+        .show_difference_ba = show_difference_ba_,
+        .show_product = show_product_,
+        .show_quotient_ab = show_quotient_ab_,
+        .show_quotient_ba = show_quotient_ba_,
+        .line_width = line_width_,
+        .auto_scale = auto_scale_,
+        .manual_ring_interval = manual_ring_interval_,
+    };
     (void)save_config(config_path_, cfg);
 }
 
@@ -191,6 +206,9 @@ void App::draw_controls() {
     draw_vector_input("A", a_);
     ImGui::SeparatorText("Vector B");
     draw_vector_input("B", b_);
+
+    const vecmath::Vec2 a = to_vec(a_.xy);
+    const vecmath::Vec2 b = to_vec(b_.xy);
 
     ImGui::Spacing();
     ImGui::InputFloat("Zero direction (deg)", &zero_direction_deg_, 1.0F, 10.0F, "%.2f");
@@ -241,6 +259,25 @@ void App::draw_controls() {
     ImGui::Checkbox("Show A - B", &show_difference_);
     ImGui::Checkbox("Show tip-to-tail construction", &show_tip_to_tail_);
     ImGui::Checkbox("Show difference segment", &show_difference_segment_);
+    ImGui::Checkbox("Show B - A", &show_difference_ba_);
+    ImGui::SameLine();
+    ImGui::Checkbox("Show A x B", &show_product_);
+
+    const DerivedVectors derived = compute_derived_vectors(a, b);
+
+    ImGui::BeginDisabled(!derived.quotient_ab.has_value());
+    ImGui::Checkbox("Show A / B", &show_quotient_ab_);
+    ImGui::EndDisabled();
+    if (!derived.quotient_ab) {
+        show_quotient_ab_ = false;
+    }
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!derived.quotient_ba.has_value());
+    ImGui::Checkbox("Show B / A", &show_quotient_ba_);
+    ImGui::EndDisabled();
+    if (!derived.quotient_ba) {
+        show_quotient_ba_ = false;
+    }
 
     ImGui::Spacing();
     ImGui::TextUnformatted("Tip marker style");
@@ -263,8 +300,6 @@ void App::draw_controls() {
                            ImGuiSliderFlags_Logarithmic);
     }
 
-    const vecmath::Vec2 a = to_vec(a_.xy);
-    const vecmath::Vec2 b = to_vec(b_.xy);
     const vecmath::Polar pa = vecmath::to_polar(a);
     const vecmath::Polar pb = vecmath::to_polar(b);
 
@@ -278,7 +313,7 @@ void App::draw_controls() {
     ImGui::Text("angle(A, B) = %.2f deg", vecmath::angle_between(a, b) * kRadToDeg);
 
     ImGui::SeparatorText("Derived vectors");
-    draw_derived_vectors_table(compute_derived_vectors(a, b));
+    draw_derived_vectors_table(derived);
 }
 
 void App::draw_plot() const {
@@ -292,6 +327,10 @@ void App::draw_plot() const {
         .show_difference = show_difference_,
         .show_tip_to_tail = show_tip_to_tail_,
         .show_difference_segment = show_difference_segment_,
+        .show_difference_ba = show_difference_ba_,
+        .show_product = show_product_,
+        .show_quotient_ab = show_quotient_ab_,
+        .show_quotient_ba = show_quotient_ba_,
         .marker_style = marker_style_,
         .zero_direction_deg = static_cast<double>(zero_direction_deg_),
         .rotation_direction = rotation_direction_,
@@ -327,6 +366,22 @@ void App::draw_plot() const {
     }
     if (plan.sum) {
         polarplot::draw_vector("A + B", *plan.sum, plan.convention, marker_style_,
+                               /*head_frac=*/0.12, line_width_);
+    }
+    if (plan.difference_ba) {
+        polarplot::draw_vector("B - A", *plan.difference_ba, plan.convention, marker_style_,
+                               /*head_frac=*/0.12, line_width_);
+    }
+    if (plan.product) {
+        polarplot::draw_vector("A x B", *plan.product, plan.convention, marker_style_,
+                               /*head_frac=*/0.12, line_width_);
+    }
+    if (plan.quotient_ab) {
+        polarplot::draw_vector("A / B", *plan.quotient_ab, plan.convention, marker_style_,
+                               /*head_frac=*/0.12, line_width_);
+    }
+    if (plan.quotient_ba) {
+        polarplot::draw_vector("B / A", *plan.quotient_ba, plan.convention, marker_style_,
                                /*head_frac=*/0.12, line_width_);
     }
     // Positional ids: fine because draw_annotation_vector's id is never shown

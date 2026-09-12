@@ -53,6 +53,12 @@ private:
     bool show_difference_{true};
     bool show_tip_to_tail_{false};
     bool show_difference_segment_{false};
+    // Show/plot toggles for the remaining derived vectors -- plain arrows,
+    // no construction sub-toggles (see ui::Config::show_difference_ba etc.).
+    bool show_difference_ba_{false};
+    bool show_product_{false};
+    bool show_quotient_ab_{false};
+    bool show_quotient_ba_{false};
     // Raw zero-direction angle, in degrees, as entered by the user.
     float zero_direction_deg_{0.0F};
     // The two independent toggles that compose into polar_plotting's
