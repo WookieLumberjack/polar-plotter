@@ -1,5 +1,6 @@
 #include <cmath>
 #include <numbers>
+#include <optional>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -90,6 +91,51 @@ TEST_CASE("angle_between is symmetric and bounded", "[vec2]") {
 
     SECTION("degenerate input returns zero") {
         REQUIRE(vecmath::angle_between(Vec2{0.0, 0.0}, a) == 0.0);
+    }
+}
+
+TEST_CASE("complex_multiply treats each Vec2 as a complex number", "[vec2][complex]") {
+    const Vec2 a{3.0, 1.0};
+    const Vec2 b{-1.0, 2.0};
+
+    // (3+1i)(-1+2i) = (3*-1 - 1*2) + (3*2 + 1*-1)i = -5 + 5i
+    const Vec2 product = vecmath::complex_multiply(a, b);
+    REQUIRE_THAT(product.x, WithinAbs(-5.0, 1e-12));
+    REQUIRE_THAT(product.y, WithinAbs(5.0, 1e-12));
+
+    SECTION("amplitude multiplies and phase adds") {
+        REQUIRE_THAT(vecmath::magnitude(product),
+                     WithinRel(vecmath::magnitude(a) * vecmath::magnitude(b)));
+
+        const double expected_angle = vecmath::angle(a) + vecmath::angle(b);
+        REQUIRE_THAT(std::cos(vecmath::angle(product)), WithinAbs(std::cos(expected_angle), 1e-12));
+        REQUIRE_THAT(std::sin(vecmath::angle(product)), WithinAbs(std::sin(expected_angle), 1e-12));
+    }
+}
+
+TEST_CASE("complex_divide treats each Vec2 as a complex number", "[vec2][complex]") {
+    const Vec2 a{3.0, 1.0};
+    const Vec2 b{-1.0, 2.0};
+
+    // (3+1i)/(-1+2i) = -1/5 - 7/5 i
+    const std::optional<Vec2> quotient = vecmath::complex_divide(a, b);
+    REQUIRE(quotient.has_value());
+    REQUIRE_THAT(quotient->x, WithinAbs(-0.2, 1e-12));
+    REQUIRE_THAT(quotient->y, WithinAbs(-1.4, 1e-12));
+
+    SECTION("amplitude divides and phase subtracts") {
+        REQUIRE_THAT(vecmath::magnitude(*quotient),
+                     WithinRel(vecmath::magnitude(a) / vecmath::magnitude(b)));
+
+        const double expected_angle = vecmath::angle(a) - vecmath::angle(b);
+        REQUIRE_THAT(std::cos(vecmath::angle(*quotient)),
+                     WithinAbs(std::cos(expected_angle), 1e-12));
+        REQUIRE_THAT(std::sin(vecmath::angle(*quotient)),
+                     WithinAbs(std::sin(expected_angle), 1e-12));
+    }
+
+    SECTION("zero-magnitude divisor is undefined") {
+        REQUIRE_FALSE(vecmath::complex_divide(a, Vec2{0.0, 0.0}).has_value());
     }
 }
 
