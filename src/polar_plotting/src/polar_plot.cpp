@@ -35,6 +35,13 @@ void plot_arrow_shape(const std::string& shaft_id, const std::string& head_id, P
     const std::array<double, 2> sy{tail.y, head.y};
     ImPlot::PlotLine(shaft_id.c_str(), sx.data(), sy.data(), 2, arrow_line_spec(line_color));
 
+    // Resolve whatever color the shaft item actually ended up with -- either
+    // the explicit line_color above, or ImPlot's auto-cycled colormap color
+    // when line_color is nullptr -- and force the head to that same resolved
+    // color. This guarantees shaft and head can never diverge, even though
+    // they're drawn as two separate ImPlot items.
+    const ImVec4 resolved_color = ImPlot::GetLastItemColor();
+
     const double dx = head.x - tail.x;
     const double dy = head.y - tail.y;
     const double len = std::hypot(dx, dy);
@@ -55,7 +62,7 @@ void plot_arrow_shape(const std::string& shaft_id, const std::string& head_id, P
     const std::array<double, 3> hx{back_x + wing_x, head.x, back_x - wing_x};
     const std::array<double, 3> hy{back_y - wing_y, head.y, back_y + wing_y};
 
-    ImPlot::PlotLine(head_id.c_str(), hx.data(), hy.data(), 3, arrow_line_spec(line_color));
+    ImPlot::PlotLine(head_id.c_str(), hx.data(), hy.data(), 3, arrow_line_spec(&resolved_color));
 }
 
 }  // namespace
