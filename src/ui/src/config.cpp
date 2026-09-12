@@ -61,6 +61,12 @@ void apply(Config& cfg, std::string_view key, std::string_view value) {
         if (const auto v = parse_float(value)) {
             cfg.line_width = *v;
         }
+    } else if (key == "auto_scale") {
+        cfg.auto_scale = as_bool(value);
+    } else if (key == "manual_ring_interval") {
+        if (const auto v = parse_float(value)) {
+            cfg.manual_ring_interval = *v;
+        }
     }
 }
 
@@ -101,6 +107,8 @@ bool save_config(const std::filesystem::path& path, const Config& config) {
     out << "show_sum=" << (config.show_sum ? 1 : 0) << '\n';
     out << "show_difference=" << (config.show_difference ? 1 : 0) << '\n';
     out << "line_width=" << config.line_width << '\n';
+    out << "auto_scale=" << (config.auto_scale ? 1 : 0) << '\n';
+    out << "manual_ring_interval=" << config.manual_ring_interval << '\n';
     return out.good();
 }
 
