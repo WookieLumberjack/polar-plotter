@@ -113,6 +113,23 @@ PlotPlan plan_plot(const PlotInputs& inputs) {
         }
     }
 
+    if (inputs.show_difference_ba) {
+        plan.difference_ba = to_point(inputs.b - inputs.a);
+    }
+    if (inputs.show_product) {
+        plan.product = to_point(vecmath::complex_multiply(inputs.a, inputs.b));
+    }
+    if (inputs.show_quotient_ab) {
+        if (const auto quotient = vecmath::complex_divide(inputs.a, inputs.b)) {
+            plan.quotient_ab = to_point(*quotient);
+        }
+    }
+    if (inputs.show_quotient_ba) {
+        if (const auto quotient = vecmath::complex_divide(inputs.b, inputs.a)) {
+            plan.quotient_ba = to_point(*quotient);
+        }
+    }
+
     if (inputs.zero_direction_input_focused || inputs.show_zero_direction_arc_persistent) {
         plan.zero_direction_arc_angle = plan.convention.zero_direction;
     }

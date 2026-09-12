@@ -1,9 +1,11 @@
 #include "ui/app.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <numbers>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -12,7 +14,9 @@
 
 #include "polar_plotting/polar_plot.hpp"
 #include "ui/config.hpp"
+#include "ui/derived_vectors.hpp"
 #include "ui/plot_plan.hpp"
+#include "ui/polar_display.hpp"
 #include "ui/zero_direction.hpp"
 #include "vector_math/vec2.hpp"
 
@@ -43,6 +47,95 @@ bool draw_binary_radio(const char* label_a, const char* label_b, bool is_a) {
 
 }  // namespace
 
+void App::draw_vector_input(const char* label_prefix, VectorInput& input) {
+    PolarDisplay display =
+        input.polar_active_ ? input.pending_polar_ : to_polar_display(to_vec(input.xy));
+
+    const std::string amplitude_label = std::string(label_prefix) + ": Amplitude";
+    const std::string phase_label = std::string(label_prefix) + ": Phase (deg)";
+    const std::string real_label = std::string(label_prefix) + ": Real";
+    const std::string imag_label = std::string(label_prefix) + ": Imag";
+
+    const bool amp_changed =
+        ImGui::InputFloat(amplitude_label.c_str(), &display.amplitude, 0.0F, 0.0F, "%.3f");
+    const bool amp_focused = ImGui::IsItemFocused();
+    const bool phase_changed =
+        ImGui::InputFloat(phase_label.c_str(), &display.phase_deg, 0.0F, 0.0F, "%.2f");
+    const bool phase_focused = ImGui::IsItemFocused();
+    const bool real_changed =
+        ImGui::InputFloat(real_label.c_str(), input.xy.data(), 0.0F, 0.0F, "%.3f");
+    const bool imag_changed =
+        ImGui::InputFloat(imag_label.c_str(), input.xy.data() + 1, 0.0F, 0.0F, "%.3f");
+
+    const bool polar_focused_now = amp_focused || phase_focused;
+
+    if (real_changed || imag_changed) {
+        input.polar_active_ = false;
+        return;
+    }
+    if (amp_changed || phase_changed || polar_focused_now) {
+        input.pending_polar_ = display;
+        const vecmath::Vec2 v = from_polar_display(display);
+        input.xy = {static_cast<float>(v.x), static_cast<float>(v.y)};
+        input.polar_active_ = true;
+        return;
+    }
+    if (input.polar_active_) {
+        const PolarDisplay canonical = canonicalize_polar_display(input.pending_polar_);
+        const vecmath::Vec2 v = from_polar_display(canonical);
+        input.xy = {static_cast<float>(v.x), static_cast<float>(v.y)};
+        input.polar_active_ = false;
+    }
+}
+
+void App::draw_derived_vectors_table(const DerivedVectors& derived) {
+    struct Row {
+        const char* name{nullptr};
+        std::optional<vecmath::Vec2> vector;
+    };
+    const std::array<Row, 6> rows{{
+        {"A + B", derived.sum},
+        {"A - B", derived.difference_ab},
+        {"B - A", derived.difference_ba},
+        {"A x B", derived.product},
+        {"A / B", derived.quotient_ab},
+        {"B / A", derived.quotient_ba},
+    }};
+
+    if (!ImGui::BeginTable("derived_vectors", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+        return;
+    }
+    ImGui::TableSetupColumn("Vector");
+    ImGui::TableSetupColumn("Amplitude");
+    ImGui::TableSetupColumn("Phase (deg)");
+    ImGui::TableSetupColumn("Real");
+    ImGui::TableSetupColumn("Imag");
+    ImGui::TableHeadersRow();
+
+    for (const Row& row : rows) {
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextUnformatted(row.name);
+        if (row.vector) {
+            const PolarDisplay display = to_polar_display(*row.vector);
+            ImGui::TableSetColumnIndex(1);
+            ImGui::Text("%.3f", static_cast<double>(display.amplitude));
+            ImGui::TableSetColumnIndex(2);
+            ImGui::Text("%.2f", static_cast<double>(display.phase_deg));
+            ImGui::TableSetColumnIndex(3);
+            ImGui::Text("%.3f", row.vector->x);
+            ImGui::TableSetColumnIndex(4);
+            ImGui::Text("%.3f", row.vector->y);
+        } else {
+            for (int col = 1; col <= 4; ++col) {
+                ImGui::TableSetColumnIndex(col);
+                ImGui::TextUnformatted("--");
+            }
+        }
+    }
+    ImGui::EndTable();
+}
+
 App::App() = default;
 
 App::App(std::filesystem::path config_path) : config_path_(std::move(config_path)) {
@@ -51,6 +144,10 @@ App::App(std::filesystem::path config_path) : config_path_(std::move(config_path
         b_.xy = cfg->b;
         show_sum_ = cfg->show_sum;
         show_difference_ = cfg->show_difference;
+        show_difference_ba_ = cfg->show_difference_ba;
+        show_product_ = cfg->show_product;
+        show_quotient_ab_ = cfg->show_quotient_ab;
+        show_quotient_ba_ = cfg->show_quotient_ba;
         line_width_ = cfg->line_width;
         auto_scale_ = cfg->auto_scale;
         manual_ring_interval_ = cfg->manual_ring_interval;
@@ -64,7 +161,18 @@ void App::save() const {
         return;
     }
     const Config cfg{
-        a_.xy, b_.xy, show_sum_, show_difference_, line_width_, auto_scale_, manual_ring_interval_};
+        .a = a_.xy,
+        .b = b_.xy,
+        .show_sum = show_sum_,
+        .show_difference = show_difference_,
+        .show_difference_ba = show_difference_ba_,
+        .show_product = show_product_,
+        .show_quotient_ab = show_quotient_ab_,
+        .show_quotient_ba = show_quotient_ba_,
+        .line_width = line_width_,
+        .auto_scale = auto_scale_,
+        .manual_ring_interval = manual_ring_interval_,
+    };
     (void)save_config(config_path_, cfg);
 }
 
@@ -91,11 +199,16 @@ void App::render() {
 }
 
 void App::draw_controls() {
-    ImGui::TextUnformatted("Enter two vectors in Cartesian components.");
+    ImGui::TextUnformatted("Enter two vectors as Amplitude/Phase or Real/Imag.");
     ImGui::Spacing();
 
-    ImGui::InputFloat2("A (x, y)", a_.xy.data(), "%.3f");
-    ImGui::InputFloat2("B (x, y)", b_.xy.data(), "%.3f");
+    ImGui::SeparatorText("Vector A");
+    draw_vector_input("A", a_);
+    ImGui::SeparatorText("Vector B");
+    draw_vector_input("B", b_);
+
+    const vecmath::Vec2 a = to_vec(a_.xy);
+    const vecmath::Vec2 b = to_vec(b_.xy);
 
     ImGui::Spacing();
     ImGui::InputFloat("Zero direction (deg)", &zero_direction_deg_, 1.0F, 10.0F, "%.2f");
@@ -146,6 +259,25 @@ void App::draw_controls() {
     ImGui::Checkbox("Show A - B", &show_difference_);
     ImGui::Checkbox("Show tip-to-tail construction", &show_tip_to_tail_);
     ImGui::Checkbox("Show difference segment", &show_difference_segment_);
+    ImGui::Checkbox("Show B - A", &show_difference_ba_);
+    ImGui::SameLine();
+    ImGui::Checkbox("Show A x B", &show_product_);
+
+    const DerivedVectors derived = compute_derived_vectors(a, b);
+
+    ImGui::BeginDisabled(!derived.quotient_ab.has_value());
+    ImGui::Checkbox("Show A / B", &show_quotient_ab_);
+    ImGui::EndDisabled();
+    if (!derived.quotient_ab) {
+        show_quotient_ab_ = false;
+    }
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!derived.quotient_ba.has_value());
+    ImGui::Checkbox("Show B / A", &show_quotient_ba_);
+    ImGui::EndDisabled();
+    if (!derived.quotient_ba) {
+        show_quotient_ba_ = false;
+    }
 
     ImGui::Spacing();
     ImGui::TextUnformatted("Tip marker style");
@@ -168,8 +300,6 @@ void App::draw_controls() {
                            ImGuiSliderFlags_Logarithmic);
     }
 
-    const vecmath::Vec2 a = to_vec(a_.xy);
-    const vecmath::Vec2 b = to_vec(b_.xy);
     const vecmath::Polar pa = vecmath::to_polar(a);
     const vecmath::Polar pb = vecmath::to_polar(b);
 
@@ -181,6 +311,9 @@ void App::draw_controls() {
     ImGui::Text("A + B = (%.4f, %.4f)", (a + b).x, (a + b).y);
     ImGui::Text("A . B = %.4f", vecmath::dot(a, b));
     ImGui::Text("angle(A, B) = %.2f deg", vecmath::angle_between(a, b) * kRadToDeg);
+
+    ImGui::SeparatorText("Derived vectors");
+    draw_derived_vectors_table(derived);
 }
 
 void App::draw_plot() const {
@@ -194,6 +327,10 @@ void App::draw_plot() const {
         .show_difference = show_difference_,
         .show_tip_to_tail = show_tip_to_tail_,
         .show_difference_segment = show_difference_segment_,
+        .show_difference_ba = show_difference_ba_,
+        .show_product = show_product_,
+        .show_quotient_ab = show_quotient_ab_,
+        .show_quotient_ba = show_quotient_ba_,
         .marker_style = marker_style_,
         .zero_direction_deg = static_cast<double>(zero_direction_deg_),
         .rotation_direction = rotation_direction_,
@@ -229,6 +366,22 @@ void App::draw_plot() const {
     }
     if (plan.sum) {
         polarplot::draw_vector("A + B", *plan.sum, plan.convention, marker_style_,
+                               /*head_frac=*/0.12, line_width_);
+    }
+    if (plan.difference_ba) {
+        polarplot::draw_vector("B - A", *plan.difference_ba, plan.convention, marker_style_,
+                               /*head_frac=*/0.12, line_width_);
+    }
+    if (plan.product) {
+        polarplot::draw_vector("A x B", *plan.product, plan.convention, marker_style_,
+                               /*head_frac=*/0.12, line_width_);
+    }
+    if (plan.quotient_ab) {
+        polarplot::draw_vector("A / B", *plan.quotient_ab, plan.convention, marker_style_,
+                               /*head_frac=*/0.12, line_width_);
+    }
+    if (plan.quotient_ba) {
+        polarplot::draw_vector("B / A", *plan.quotient_ba, plan.convention, marker_style_,
                                /*head_frac=*/0.12, line_width_);
     }
     // Positional ids: fine because draw_annotation_vector's id is never shown

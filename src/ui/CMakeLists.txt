@@ -2,7 +2,9 @@ add_library(ui STATIC
     src/angle_convention.cpp
     src/app.cpp
     src/config.cpp
+    src/derived_vectors.cpp
     src/plot_plan.cpp
+    src/polar_display.cpp
     src/zero_direction.cpp)
 
 target_include_directories(ui PUBLIC

@@ -55,6 +55,52 @@ TEST_CASE("plan_plot always populates a, b, and the composed convention", "[plot
     CHECK(plan.tip_to_tail_annotations.empty());
     CHECK_FALSE(plan.difference_segment.has_value());
     CHECK_FALSE(plan.zero_direction_arc_angle.has_value());
+    CHECK_FALSE(plan.difference_ba.has_value());
+    CHECK_FALSE(plan.product.has_value());
+    CHECK_FALSE(plan.quotient_ab.has_value());
+    CHECK_FALSE(plan.quotient_ba.has_value());
+}
+
+TEST_CASE("plan_plot populates the plain-arrow derived vectors only when toggled on",
+          "[plot_plan]") {
+    SECTION("all four off: none present") {
+        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA, .b = kB});
+        CHECK_FALSE(plan.difference_ba.has_value());
+        CHECK_FALSE(plan.product.has_value());
+        CHECK_FALSE(plan.quotient_ab.has_value());
+        CHECK_FALSE(plan.quotient_ba.has_value());
+    }
+
+    SECTION("show_difference_ba on: B - A present") {
+        const PlotPlan plan =
+            ui::plan_plot(PlotInputs{.a = kA, .b = kB, .show_difference_ba = true});
+        const Vec2 expected = kB - kA;
+        CHECK(points_equal(require_value(plan.difference_ba), {expected.x, expected.y}));
+    }
+
+    SECTION("show_product on: A x B present") {
+        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA, .b = kB, .show_product = true});
+        const Vec2 expected = vecmath::complex_multiply(kA, kB);
+        CHECK(points_equal(require_value(plan.product), {expected.x, expected.y}));
+    }
+
+    SECTION("show_quotient_ab on: A / B present") {
+        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA, .b = kB, .show_quotient_ab = true});
+        const Vec2 expected = require_value(vecmath::complex_divide(kA, kB));
+        CHECK(points_equal(require_value(plan.quotient_ab), {expected.x, expected.y}));
+    }
+
+    SECTION("show_quotient_ba on: B / A present") {
+        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA, .b = kB, .show_quotient_ba = true});
+        const Vec2 expected = require_value(vecmath::complex_divide(kB, kA));
+        CHECK(points_equal(require_value(plan.quotient_ba), {expected.x, expected.y}));
+    }
+
+    SECTION("show_quotient_ab on but B is zero: quotient stays absent despite the toggle") {
+        const PlotPlan plan =
+            ui::plan_plot(PlotInputs{.a = kA, .b = Vec2{0.0, 0.0}, .show_quotient_ab = true});
+        CHECK_FALSE(plan.quotient_ab.has_value());
+    }
 }
 
 TEST_CASE("sum shown/hidden x tip-to-tail on/off", "[plot_plan]") {

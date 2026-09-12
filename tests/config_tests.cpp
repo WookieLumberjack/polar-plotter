@@ -92,3 +92,47 @@ TEST_CASE("loading a config file that omits auto_scale/manual_ring_interval fall
 
     std::filesystem::remove(path);
 }
+
+TEST_CASE(
+    "show_difference_ba/show_product/show_quotient_ab/show_quotient_ba round-trip through "
+    "save_config/load_config",
+    "[config]") {
+    const std::filesystem::path path =
+        make_temp_path("polar_plotter_config_tests_derived_toggles.cfg");
+
+    Config cfg{};
+    cfg.show_difference_ba = true;
+    cfg.show_product = true;
+    cfg.show_quotient_ab = true;
+    cfg.show_quotient_ba = true;
+
+    REQUIRE(save_config(path, cfg));
+    const Config loaded = require_value(load_config(path));
+    CHECK(loaded.show_difference_ba == true);
+    CHECK(loaded.show_product == true);
+    CHECK(loaded.show_quotient_ab == true);
+    CHECK(loaded.show_quotient_ba == true);
+
+    std::filesystem::remove(path);
+}
+
+TEST_CASE(
+    "loading a config file that omits the derived-vector toggles falls back to their defaults",
+    "[config]") {
+    const std::filesystem::path path =
+        make_temp_path("polar_plotter_config_tests_derived_toggles_missing.cfg");
+
+    {
+        std::ofstream out(path, std::ios::trunc);
+        out << "a.x=1.0\n";
+        out << "a.y=2.0\n";
+    }
+
+    const Config loaded = require_value(load_config(path));
+    CHECK(loaded.show_difference_ba == Config{}.show_difference_ba);
+    CHECK(loaded.show_product == Config{}.show_product);
+    CHECK(loaded.show_quotient_ab == Config{}.show_quotient_ab);
+    CHECK(loaded.show_quotient_ba == Config{}.show_quotient_ba);
+
+    std::filesystem::remove(path);
+}

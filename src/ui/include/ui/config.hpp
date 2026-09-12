@@ -14,6 +14,14 @@ struct Config {
     std::array<float, 2> b{-1.0F, 2.0F};
     bool show_sum{false};
     bool show_difference{true};
+    // Show/plot toggles for the remaining derived vectors (see
+    // ui::DerivedVectors): B - A, the complex product A x B, and the two
+    // complex quotients A / B, B / A. Unlike show_sum/show_difference, none
+    // of these has a tip-to-tail/construction sub-toggle.
+    bool show_difference_ba{false};
+    bool show_product{false};
+    bool show_quotient_ab{false};
+    bool show_quotient_ba{false};
     // Pixel thickness of vector shafts/heads and the zero-direction/annotation
     // arcs, shared by all of them -- there is no per-item styling.
     float line_width{2.0F};

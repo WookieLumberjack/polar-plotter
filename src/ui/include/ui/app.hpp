@@ -6,6 +6,8 @@
 
 #include "polar_plotting/polar_plot.hpp"
 #include "ui/angle_convention.hpp"
+#include "ui/derived_vectors.hpp"
+#include "ui/polar_display.hpp"
 
 namespace ui {
 
@@ -35,6 +37,13 @@ public:
 private:
     struct VectorInput {
         std::array<float, 2> xy{0.0F, 0.0F};
+        // Transient Amplitude/Phase state while one of those two fields has
+        // ImGui keyboard focus (see draw_vector_input) -- lets a negative
+        // amplitude survive across frames while the Amplitude field is being
+        // typed into, since deriving it fresh from xy every frame would
+        // always canonicalize it back to non-negative.
+        PolarDisplay pending_polar_{};
+        bool polar_active_{false};
     };
 
     std::filesystem::path config_path_;
@@ -44,6 +53,12 @@ private:
     bool show_difference_{true};
     bool show_tip_to_tail_{false};
     bool show_difference_segment_{false};
+    // Show/plot toggles for the remaining derived vectors -- plain arrows,
+    // no construction sub-toggles (see ui::Config::show_difference_ba etc.).
+    bool show_difference_ba_{false};
+    bool show_product_{false};
+    bool show_quotient_ab_{false};
+    bool show_quotient_ba_{false};
     // Raw zero-direction angle, in degrees, as entered by the user.
     float zero_direction_deg_{0.0F};
     // The two independent toggles that compose into polar_plotting's
@@ -75,6 +90,14 @@ private:
 
     void draw_controls();
     void draw_plot() const;
+    // Draws the 4 live-synced Amplitude/Phase/Real/Imag fields for one named
+    // vector (\p label_prefix is "A" or "B"), applying the focus-tracked sync
+    // rule: whichever field has focus this frame is the source of truth, the
+    // rest are recomputed from it.
+    static void draw_vector_input(const char* label_prefix, VectorInput& input);
+    // Read-only table of the 6 derived vectors (A+B, A-B, B-A, AxB, A/B,
+    // B/A), each row showing Amplitude/Phase/Real/Imag.
+    static void draw_derived_vectors_table(const DerivedVectors& derived);
 };
 
 }  // namespace ui
