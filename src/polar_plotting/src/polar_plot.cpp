@@ -286,10 +286,14 @@ void draw_tip_label(const char* label, Point tip) {
 
 void draw_vector(const char* label, Point head, AngleConvention convention,
                  TipMarkerStyle marker_style, double head_frac, float thickness) {
-    draw_arrow(label, Point{0.0, 0.0}, head, convention, head_frac, thickness);
-
+    // Draw the tip marker before the arrow shaft/head so it sits behind the
+    // arrowhead and peeks out past the tip, instead of being fully covered
+    // when the marker is larger than the arrowhead.
     const Point tip = to_plotted_point(head, convention);
     draw_tip_marker(label, tip, marker_style);
+
+    draw_arrow(label, Point{0.0, 0.0}, head, convention, head_frac, thickness);
+
     draw_tip_label(label, tip);
 }
 
