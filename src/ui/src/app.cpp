@@ -382,12 +382,18 @@ void App::draw_plot() {
     // frame's marker color, head position, and interaction state.
     const polarplot::HoverTarget hovered = polarplot::hover_target(plan.a, plan.b, plan.convention);
 
+    // Manual-scale drag clamp (#44/#49): with auto-scale off, `extent`
+    // (this same PlotFrame's extent, already used above for the grid/axis
+    // view) never grows with the dragged vector's magnitude, so passing it
+    // through as the visible-extent clamp keeps a manual-scale drag from
+    // moving the tip past what's currently visible. Ignored while
+    // auto_scale_ is true.
     const polarplot::InteractiveVectorResult a_result = polarplot::draw_interactive_vector(
         "A", plan.a, plan.convention, marker_style_, hovered == polarplot::HoverTarget::kA,
-        a_.dragging_, /*head_frac=*/0.12, line_width_);
+        a_.dragging_, /*head_frac=*/0.12, line_width_, auto_scale_, extent);
     const polarplot::InteractiveVectorResult b_result = polarplot::draw_interactive_vector(
         "B", plan.b, plan.convention, marker_style_, hovered == polarplot::HoverTarget::kB,
-        b_.dragging_, /*head_frac=*/0.12, line_width_);
+        b_.dragging_, /*head_frac=*/0.12, line_width_, auto_scale_, extent);
     apply_interactive_result(a_, a_result);
     apply_interactive_result(b_, b_result);
     if (plan.difference) {

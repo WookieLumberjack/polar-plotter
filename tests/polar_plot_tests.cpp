@@ -406,3 +406,55 @@ TEST_CASE("inflate_for_labels inflates a PlotFrame's extent by a fixed headroom 
                      WithinAbs(polarplot::inflate_for_labels(large), 1e-12));
     }
 }
+
+// #49: manual-scale drag clamp -- a dragged tip can never leave the currently
+// visible extent when auto-scale is off.
+TEST_CASE("clamp_to_extent leaves a point inside the extent unchanged",
+          "[polar_plot][interaction][clamp]") {
+    const polarplot::Point clamped = polarplot::clamp_to_extent({3.0, -2.0}, /*extent=*/5.0);
+    REQUIRE_THAT(clamped.x, WithinAbs(3.0, 1e-12));
+    REQUIRE_THAT(clamped.y, WithinAbs(-2.0, 1e-12));
+}
+
+TEST_CASE("clamp_to_extent clamps each axis independently to +/- extent",
+          "[polar_plot][interaction][clamp]") {
+    const polarplot::Point clamped = polarplot::clamp_to_extent({10.0, -10.0}, /*extent=*/5.0);
+    REQUIRE_THAT(clamped.x, WithinAbs(5.0, 1e-12));
+    REQUIRE_THAT(clamped.y, WithinAbs(-5.0, 1e-12));
+}
+
+TEST_CASE("clamp_to_extent treats the boundary as inclusive", "[polar_plot][interaction][clamp]") {
+    const polarplot::Point clamped = polarplot::clamp_to_extent({5.0, 5.0}, /*extent=*/5.0);
+    REQUIRE_THAT(clamped.x, WithinAbs(5.0, 1e-12));
+    REQUIRE_THAT(clamped.y, WithinAbs(5.0, 1e-12));
+}
+
+// #49: mouse-leaves-canvas clamp -- a drag keeps tracking the mouse position
+// clamped to the plot's pixel-space edge rather than freezing or canceling.
+TEST_CASE("clamp_to_rect leaves a point inside the rect unchanged",
+          "[polar_plot][interaction][clamp]") {
+    constexpr polarplot::PixelRect rect{/*min=*/{0.0, 0.0}, /*max=*/{100.0, 200.0}};
+    const polarplot::Point clamped = polarplot::clamp_to_rect({50.0, 150.0}, rect);
+    REQUIRE_THAT(clamped.x, WithinAbs(50.0, 1e-12));
+    REQUIRE_THAT(clamped.y, WithinAbs(150.0, 1e-12));
+}
+
+TEST_CASE("clamp_to_rect clamps a point beyond the rect to its nearest edge",
+          "[polar_plot][interaction][clamp]") {
+    constexpr polarplot::PixelRect rect{/*min=*/{0.0, 0.0}, /*max=*/{100.0, 200.0}};
+
+    const polarplot::Point beyond_max = polarplot::clamp_to_rect({150.0, 250.0}, rect);
+    REQUIRE_THAT(beyond_max.x, WithinAbs(100.0, 1e-12));
+    REQUIRE_THAT(beyond_max.y, WithinAbs(200.0, 1e-12));
+
+    const polarplot::Point beyond_min = polarplot::clamp_to_rect({-50.0, -20.0}, rect);
+    REQUIRE_THAT(beyond_min.x, WithinAbs(0.0, 1e-12));
+    REQUIRE_THAT(beyond_min.y, WithinAbs(0.0, 1e-12));
+}
+
+TEST_CASE("clamp_to_rect clamps each axis independently", "[polar_plot][interaction][clamp]") {
+    constexpr polarplot::PixelRect rect{/*min=*/{0.0, 0.0}, /*max=*/{100.0, 200.0}};
+    const polarplot::Point clamped = polarplot::clamp_to_rect({150.0, 100.0}, rect);
+    REQUIRE_THAT(clamped.x, WithinAbs(100.0, 1e-12));
+    REQUIRE_THAT(clamped.y, WithinAbs(100.0, 1e-12));
+}
