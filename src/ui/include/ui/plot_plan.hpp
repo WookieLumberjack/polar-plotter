@@ -29,6 +29,12 @@ struct PlotInputs {
     bool show_difference{false};
     bool show_tip_to_tail{false};
     bool show_difference_segment{false};
+    // Plain-arrow derived vectors -- no construction sub-toggles, unlike
+    // sum/difference above.
+    bool show_difference_ba{false};
+    bool show_product{false};
+    bool show_quotient_ab{false};
+    bool show_quotient_ba{false};
     polarplot::TipMarkerStyle marker_style{polarplot::TipMarkerStyle::kDot};
     double zero_direction_deg{0.0};
     RotationDirection rotation_direction{RotationDirection::CounterClockwise};
@@ -81,6 +87,13 @@ struct PlotPlan {
     polarplot::Point b;
     std::optional<polarplot::Point> sum;
     std::optional<polarplot::Point> difference;
+    // Plain-arrow derived vectors, present iff their show_* toggle is on --
+    // for the quotients, also iff the divisor's magnitude is nonzero (see
+    // vecmath::complex_divide).
+    std::optional<polarplot::Point> difference_ba;
+    std::optional<polarplot::Point> product;
+    std::optional<polarplot::Point> quotient_ab;
+    std::optional<polarplot::Point> quotient_ba;
     // 0, 1 (difference's tip-to-tail only), or 2 (sum's parallelogram)
     // entries, depending on which toggles are on.
     std::vector<polarplot::AnnotationVector> tip_to_tail_annotations;
