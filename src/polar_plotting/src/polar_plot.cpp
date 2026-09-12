@@ -16,24 +16,28 @@ constexpr double kTopAngle = kPi / 2.0;  // plot "up"/12 o'clock, in raw coordin
 constexpr int kArcSegments = 48;
 
 // Build the ImPlotSpec used for an arrow's shaft/head: \p line_color when
-// non-null, otherwise ImPlot's default per-item color cycling.
-ImPlotSpec arrow_line_spec(const ImVec4* line_color) {
+// non-null, otherwise ImPlot's default per-item color cycling; \p thickness
+// is always applied as the line weight.
+ImPlotSpec arrow_line_spec(const ImVec4* line_color, float thickness) {
     ImPlotSpec spec;
     if (line_color != nullptr) {
         spec.LineColor = *line_color;
     }
+    spec.LineWeight = thickness;
     return spec;
 }
 
 // Draw an arrow's shaft (\p shaft_id) and head (\p head_id) from \p tail to
 // \p head (already in plotted/drawing coordinates -- callers remap via
 // \ref to_plotted_point first), styled with \p line_color (nullptr for
-// ImPlot's default color cycling).
+// ImPlot's default color cycling) and \p thickness (line weight in pixels,
+// shared by shaft and head).
 void plot_arrow_shape(const std::string& shaft_id, const std::string& head_id, Point tail,
-                      Point head, double head_frac, const ImVec4* line_color) {
+                      Point head, double head_frac, const ImVec4* line_color, float thickness) {
     const std::array<double, 2> sx{tail.x, head.x};
     const std::array<double, 2> sy{tail.y, head.y};
-    ImPlot::PlotLine(shaft_id.c_str(), sx.data(), sy.data(), 2, arrow_line_spec(line_color));
+    ImPlot::PlotLine(shaft_id.c_str(), sx.data(), sy.data(), 2,
+                     arrow_line_spec(line_color, thickness));
 
     // Resolve whatever color the shaft item actually ended up with -- either
     // the explicit line_color above, or ImPlot's auto-cycled colormap color
@@ -50,7 +54,8 @@ void plot_arrow_shape(const std::string& shaft_id, const std::string& head_id, P
     const std::array<double, 3> hx{wings.first.x, head.x, wings.second.x};
     const std::array<double, 3> hy{wings.first.y, head.y, wings.second.y};
 
-    ImPlot::PlotLine(head_id.c_str(), hx.data(), hy.data(), 3, arrow_line_spec(&resolved_color));
+    ImPlot::PlotLine(head_id.c_str(), hx.data(), hy.data(), 3,
+                     arrow_line_spec(&resolved_color, thickness));
 }
 
 }  // namespace
@@ -157,11 +162,11 @@ void draw_polar_grid(double max_radius, AngleConvention convention, int rings, i
 }
 
 void draw_arrow(const char* label, Point tail, Point head, AngleConvention convention,
-                double head_frac) {
+                double head_frac, float thickness) {
     const Point ptail = to_plotted_point(tail, convention);
     const Point phead = to_plotted_point(head, convention);
     const std::string head_id = std::string("##head_") + label;
-    plot_arrow_shape(label, head_id, ptail, phead, head_frac, /*line_color=*/nullptr);
+    plot_arrow_shape(label, head_id, ptail, phead, head_frac, /*line_color=*/nullptr, thickness);
 }
 
 namespace {
@@ -189,8 +194,8 @@ void draw_tip_label(const char* label, Point tip) {
 }  // namespace
 
 void draw_vector(const char* label, Point head, AngleConvention convention,
-                 TipMarkerStyle marker_style, double head_frac) {
-    draw_arrow(label, Point{0.0, 0.0}, head, convention, head_frac);
+                 TipMarkerStyle marker_style, double head_frac, float thickness) {
+    draw_arrow(label, Point{0.0, 0.0}, head, convention, head_frac, thickness);
 
     const Point tip = to_plotted_point(head, convention);
     draw_tip_marker(label, tip, marker_style);
@@ -198,7 +203,7 @@ void draw_vector(const char* label, Point head, AngleConvention convention,
 }
 
 void draw_annotation_vector(const char* id, AnnotationVector annotation, AngleConvention convention,
-                            double head_frac) {
+                            double head_frac, float thickness) {
     // Muted, semi-transparent gray -- distinct from named vectors, which cycle
     // through ImPlot's saturated default colormap.
     constexpr ImVec4 kAnnotationColor{0.55F, 0.55F, 0.55F, 0.65F};
@@ -210,7 +215,7 @@ void draw_annotation_vector(const char* id, AnnotationVector annotation, AngleCo
 
     const std::string shaft_id = std::string("##annotation_") + id;
     const std::string head_id = std::string("##annotation_head_") + id;
-    plot_arrow_shape(shaft_id, head_id, ptail, phead, head_frac, &kAnnotationColor);
+    plot_arrow_shape(shaft_id, head_id, ptail, phead, head_frac, &kAnnotationColor, thickness);
 }
 
 void draw_angle_arc(double radius, double to_angle, ArcStyle style) {

@@ -14,6 +14,9 @@ struct Config {
     std::array<float, 2> b{-1.0F, 2.0F};
     bool show_sum{false};
     bool show_difference{true};
+    // Pixel thickness of vector shafts/heads and the zero-direction/annotation
+    // arcs, shared by all of them -- there is no per-item styling.
+    float line_width{2.0F};
 
     friend bool operator==(const Config&, const Config&) = default;
 };

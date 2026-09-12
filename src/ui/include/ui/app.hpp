@@ -63,6 +63,9 @@ private:
     // Plot-wide tip marker style, shared by every named vector (A, B, A+B,
     // A-B) -- there is no per-vector styling.
     polarplot::TipMarkerStyle marker_style_{polarplot::TipMarkerStyle::kDot};
+    // Pixel thickness of vector shafts/heads and the zero-direction/annotation
+    // arcs, shared by all of them -- there is no per-item styling.
+    float line_width_{2.0F};
 
     void draw_controls();
     void draw_plot() const;

@@ -77,11 +77,12 @@ enum class TipMarkerStyle : std::uint8_t {
 /// Draw an arrow (shaft + head) from \p tail to \p head, labelled \p label.
 /// \p tail and \p head are given in math convention and remapped via
 /// \p convention before drawing. \p head_frac is the arrowhead length as a
-/// fraction of the shaft length. This is the bare drawing primitive -- it
+/// fraction of the shaft length. \p thickness is the shaft/head line weight
+/// in pixels, applied to both. This is the bare drawing primitive -- it
 /// carries no tip marker or tip label; use \ref draw_vector for a named
 /// vector, which always gets both.
 void draw_arrow(const char* label, Point tail, Point head, AngleConvention convention,
-                double head_frac = 0.12);
+                double head_frac = 0.12, float thickness = 2.0F);
 
 /// Draw a named vector: an arrow from the origin to \p head, plus a tip
 /// marker (styled per \p marker_style) and a tip label showing \p label,
@@ -90,8 +91,9 @@ void draw_arrow(const char* label, Point tail, Point head, AngleConvention conve
 /// vector a "named vector" as opposed to a bare annotation arrow drawn via
 /// \ref draw_arrow directly; \c polar_plotting has no notion of *why* a
 /// vector is named, only that this entry point always marks and labels it.
+/// \p thickness is the shaft/head line weight in pixels.
 void draw_vector(const char* label, Point head, AngleConvention convention,
-                 TipMarkerStyle marker_style, double head_frac = 0.12);
+                 TipMarkerStyle marker_style, double head_frac = 0.12, float thickness = 2.0F);
 
 /// A free-vector annotation: an arrow beginning at an explicit \p start point
 /// (never assumed to originate at the origin) and displaced by \p vector.
@@ -110,9 +112,9 @@ struct AnnotationVector {
 /// so pass a value unique among annotations drawn in the same plot this
 /// frame. \p annotation's \c start and \c vector endpoint are given in math
 /// convention and remapped via \p convention before drawing, exactly like
-/// \ref draw_arrow.
+/// \ref draw_arrow. \p thickness is the shaft/head line weight in pixels.
 void draw_annotation_vector(const char* id, AnnotationVector annotation, AngleConvention convention,
-                            double head_frac = 0.12);
+                            double head_frac = 0.12, float thickness = 2.0F);
 
 /// Visual style for \ref draw_angle_arc: an RGBA color (components in [0, 1])
 /// and a line thickness (pixels). Kept as a plain struct -- rather than an
