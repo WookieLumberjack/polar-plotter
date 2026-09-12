@@ -127,6 +127,33 @@ TEST_CASE("to_plotted_point preserves radius and remaps angle", "[polar_plot][an
     }
 }
 
+TEST_CASE("from_plotted_point round-trips with to_plotted_point",
+          "[polar_plot][angle_convention]") {
+    const std::vector<polarplot::Point> points{
+        {0.0, 0.0}, {1.0, 0.0},  {0.0, 1.0},   {-1.0, 0.0}, {0.0, -1.0},
+        {3.0, 4.0}, {-2.0, 5.0}, {-3.0, -4.0}, {5.0, -2.0}, {0.5, 0.25},
+    };
+    const std::vector<AngleConvention> conventions{
+        {.zero_direction = 0.0, .angle_sign = 1.0},
+        {.zero_direction = kPi / 2.0, .angle_sign = 1.0},
+        {.zero_direction = kPi, .angle_sign = 1.0},
+        {.zero_direction = 3.0 * kPi / 2.0, .angle_sign = 1.0},
+        {.zero_direction = 0.0, .angle_sign = -1.0},
+        {.zero_direction = kPi / 3.0, .angle_sign = -1.0},
+        {.zero_direction = -kPi / 4.0, .angle_sign = 1.0},
+        {.zero_direction = -kPi / 4.0, .angle_sign = -1.0},
+    };
+
+    for (const auto& p : points) {
+        for (const auto& convention : conventions) {
+            const polarplot::Point plotted = polarplot::to_plotted_point(p, convention);
+            const polarplot::Point back = polarplot::from_plotted_point(plotted, convention);
+            REQUIRE_THAT(back.x, WithinAbs(p.x, 1e-9));
+            REQUIRE_THAT(back.y, WithinAbs(p.y, 1e-9));
+        }
+    }
+}
+
 namespace {
 // Mirrors the label-radius bump used by polarplot::spoke_labels: labels sit
 // just outside the outer ring rather than exactly on it.

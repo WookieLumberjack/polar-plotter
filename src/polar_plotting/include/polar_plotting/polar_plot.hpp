@@ -80,6 +80,14 @@ private:
 /// its angle via \ref apply_angle_convention. The origin maps to itself.
 [[nodiscard]] Point to_plotted_point(Point p, AngleConvention convention);
 
+/// The pure inverse of \ref to_plotted_point: given \p p already in
+/// plotted/visual space, undo the zero-direction/angle-sign remap and
+/// recover the point in raw math-convention space. Preserves radius; the
+/// origin maps to itself. Satisfies
+/// `from_plotted_point(to_plotted_point(p, c), c) == p` for any \p p and
+/// convention \p c (within floating-point tolerance).
+[[nodiscard]] Point from_plotted_point(Point p, AngleConvention convention);
+
 /// The two "wing" endpoints of a chevron arrowhead pointing from \p tail
 /// toward \p head; the tip is \p head itself and is not part of this return
 /// value. \c first/\c second are symmetric about the tail-to-head line.
