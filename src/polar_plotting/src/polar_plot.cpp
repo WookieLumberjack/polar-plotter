@@ -131,6 +131,16 @@ Point from_plotted_point(Point p, AngleConvention convention) {
     return {radius * std::cos(math_angle), radius * std::sin(math_angle)};
 }
 
+Point snap_angle_to_increment(Point p, double increment_radians) {
+    const double radius = std::hypot(p.x, p.y);
+    if (radius == 0.0) {
+        return {0.0, 0.0};
+    }
+    const double angle = std::atan2(p.y, p.x);
+    const double snapped_angle = std::round(angle / increment_radians) * increment_radians;
+    return {radius * std::cos(snapped_angle), radius * std::sin(snapped_angle)};
+}
+
 std::vector<RulerTick> ruler_ticks(double ring_interval, int ring_count) {
     std::vector<RulerTick> ticks;
     ticks.reserve(static_cast<std::size_t>(ring_count));
@@ -411,6 +421,11 @@ InteractiveVectorResult draw_interactive_vector(const char* label, Point head,
         // magnitude) stays unaffected when auto-scale is on.
         if (!auto_scale) {
             plotted = clamp_to_extent(plotted, visible_extent);
+        }
+        // 15 degree snap increment, in plotted/visual space -- see #50.
+        constexpr double kSnapIncrementRadians = kPi / 12.0;
+        if (ImGui::GetIO().KeyShift) {
+            plotted = snap_angle_to_increment(plotted, kSnapIncrementRadians);
         }
         updated_head = from_plotted_point(plotted, convention);
     }

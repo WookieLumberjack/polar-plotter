@@ -154,6 +154,57 @@ TEST_CASE("from_plotted_point round-trips with to_plotted_point",
     }
 }
 
+TEST_CASE("snap_angle_to_increment preserves radius and snaps to the nearest increment",
+          "[polar_plot][snap]") {
+    constexpr double kIncrement = kPi / 12.0;  // 15 degrees.
+
+    SECTION("exact multiple is unchanged") {
+        const polarplot::Point p{std::cos(kIncrement * 2.0) * 3.0,
+                                 std::sin(kIncrement * 2.0) * 3.0};
+        const polarplot::Point snapped = polarplot::snap_angle_to_increment(p, kIncrement);
+        REQUIRE_THAT(snapped.x, WithinAbs(p.x, 1e-9));
+        REQUIRE_THAT(snapped.y, WithinAbs(p.y, 1e-9));
+    }
+
+    SECTION("angle just past a multiple snaps down to it, radius untouched") {
+        const double radius = 7.0;
+        const double angle = (kIncrement * 3.0) + (kIncrement * 0.1);
+        const polarplot::Point p{radius * std::cos(angle), radius * std::sin(angle)};
+        const polarplot::Point snapped = polarplot::snap_angle_to_increment(p, kIncrement);
+        const double expected_angle = kIncrement * 3.0;
+        REQUIRE_THAT(snapped.x, WithinAbs(radius * std::cos(expected_angle), 1e-9));
+        REQUIRE_THAT(snapped.y, WithinAbs(radius * std::sin(expected_angle), 1e-9));
+        REQUIRE_THAT(std::hypot(snapped.x, snapped.y), WithinAbs(radius, 1e-9));
+    }
+
+    SECTION("angle just before a multiple snaps up to it") {
+        const double radius = 2.5;
+        const double angle = (kIncrement * 5.0) - (kIncrement * 0.2);
+        const polarplot::Point p{radius * std::cos(angle), radius * std::sin(angle)};
+        const polarplot::Point snapped = polarplot::snap_angle_to_increment(p, kIncrement);
+        const double expected_angle = kIncrement * 5.0;
+        REQUIRE_THAT(snapped.x, WithinAbs(radius * std::cos(expected_angle), 1e-9));
+        REQUIRE_THAT(snapped.y, WithinAbs(radius * std::sin(expected_angle), 1e-9));
+    }
+
+    SECTION("wraps correctly near the 0/2pi boundary") {
+        const double radius = 1.0;
+        // 354 degrees, closer to a full turn (360) than to 345; should snap to 0.
+        const double angle = (kIncrement * 23.0) + (kIncrement * 0.6);
+        const polarplot::Point p{radius * std::cos(angle), radius * std::sin(angle)};
+        const polarplot::Point snapped = polarplot::snap_angle_to_increment(p, kIncrement);
+        REQUIRE_THAT(snapped.x, WithinAbs(radius, 1e-9));
+        REQUIRE_THAT(snapped.y, WithinAbs(0.0, 1e-9));
+    }
+
+    SECTION("the origin maps to itself regardless of increment") {
+        const polarplot::Point snapped =
+            polarplot::snap_angle_to_increment(polarplot::Point{0.0, 0.0}, kIncrement);
+        REQUIRE_THAT(snapped.x, WithinAbs(0.0, 1e-12));
+        REQUIRE_THAT(snapped.y, WithinAbs(0.0, 1e-12));
+    }
+}
+
 namespace {
 // Mirrors the label-radius bump used by polarplot::spoke_labels: labels sit
 // just outside the outer ring rather than exactly on it.
