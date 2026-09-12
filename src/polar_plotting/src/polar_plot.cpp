@@ -416,16 +416,21 @@ InteractiveVectorResult draw_interactive_vector(const char* label, Point head,
             ImVec2(static_cast<float>(clamped_px.x), static_cast<float>(clamped_px.y)));
 
         Point plotted{mouse_plot.x, mouse_plot.y};
+        // 15 degree snap increment, in plotted/visual space -- see #50.
+        // Applied before the manual-scale clamp below: snapping rotates the
+        // point (e.g. toward a square's corner), which can otherwise push it
+        // back outside `visible_extent` after an already-clamped point was
+        // snapped, so the clamp must run last to stay the binding
+        // constraint (#49's "never leave the visible extent" invariant).
+        constexpr double kSnapIncrementRadians = kPi / 12.0;
+        if (ImGui::GetIO().KeyShift) {
+            plotted = snap_angle_to_increment(plotted, kSnapIncrementRadians);
+        }
         // Manual-scale clamp (#44/#49): only when auto-scale is off, so the
         // existing auto-fit behavior (extent grows with the vector's
         // magnitude) stays unaffected when auto-scale is on.
         if (!auto_scale) {
             plotted = clamp_to_extent(plotted, visible_extent);
-        }
-        // 15 degree snap increment, in plotted/visual space -- see #50.
-        constexpr double kSnapIncrementRadians = kPi / 12.0;
-        if (ImGui::GetIO().KeyShift) {
-            plotted = snap_angle_to_increment(plotted, kSnapIncrementRadians);
         }
         updated_head = from_plotted_point(plotted, convention);
     }
