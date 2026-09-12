@@ -111,12 +111,20 @@ bool begin_vector_plot(const char* title, double extent) {
     // matching ImPlot's "only call EndPlot() if BeginPlot() returns true"
     // contract.
     ImPlot::PushStyleColor(ImPlotCol_PlotBorder, ImVec4(0.0F, 0.0F, 0.0F, 0.0F));
-    if (!ImPlot::BeginPlot(title, ImVec2(-1, -1), ImPlotFlags_Equal)) {
+    constexpr ImPlotFlags kPlotFlags = ImPlotFlags_Equal | ImPlotFlags_NoInputs;
+    if (!ImPlot::BeginPlot(title, ImVec2(-1, -1), kPlotFlags)) {
         ImPlot::PopStyleColor();
         return false;
     }
-    ImPlot::SetupAxes("x", "y");
-    ImPlot::SetupAxesLimits(-extent, extent, -extent, extent, ImPlotCond_Once);
+    // The polar grid drawn by draw_polar_grid is the only visual frame we
+    // want; suppress the Cartesian x/y axes' lines, ticks, tick labels, and
+    // gridlines entirely rather than just hiding the labels.
+    constexpr ImPlotAxisFlags kAxisFlags = ImPlotAxisFlags_NoDecorations;
+    ImPlot::SetupAxes("x", "y", kAxisFlags, kAxisFlags);
+    // Re-apply every frame (ImPlotCond_Always) so leftover pan/zoom state
+    // can never drift the limits away from the caller-supplied extent, even
+    // though ImPlotFlags_NoInputs already blocks new pan/zoom input.
+    ImPlot::SetupAxesLimits(-extent, extent, -extent, extent, ImPlotCond_Always);
     return true;
 }
 
