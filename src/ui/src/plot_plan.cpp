@@ -54,7 +54,7 @@ double snap_up_to_nice_step(double value) {
 
 }  // namespace
 
-PlotExtent auto_fit_extent(const PlotInputs& inputs) {
+polarplot::PlotFrame auto_fit_extent(const PlotInputs& inputs) {
     double max_magnitude = std::max(vecmath::magnitude(inputs.a), vecmath::magnitude(inputs.b));
     if (inputs.show_sum) {
         max_magnitude = std::max(max_magnitude, vecmath::magnitude(inputs.a + inputs.b));
@@ -64,17 +64,22 @@ PlotExtent auto_fit_extent(const PlotInputs& inputs) {
     }
 
     if (max_magnitude <= 0.0) {
-        return PlotExtent{.ring_interval = kAutoFitDefaultInterval,
-                          .extent = kAutoFitDefaultInterval * kAutoFitRings};
+        return polarplot::PlotFrame{.extent = kAutoFitDefaultInterval * kAutoFitRings,
+                                    .ring_interval = kAutoFitDefaultInterval,
+                                    .ring_count = kAutoFitRings};
     }
 
     const double desired_interval = (max_magnitude * kAutoFitMargin) / kAutoFitRings;
     const double ring_interval = snap_up_to_nice_step(desired_interval);
-    return PlotExtent{.ring_interval = ring_interval, .extent = ring_interval * kAutoFitRings};
+    return polarplot::PlotFrame{.extent = ring_interval * kAutoFitRings,
+                                .ring_interval = ring_interval,
+                                .ring_count = kAutoFitRings};
 }
 
-PlotExtent manual_extent(double ring_interval) {
-    return PlotExtent{.ring_interval = ring_interval, .extent = ring_interval * kAutoFitRings};
+polarplot::PlotFrame manual_extent(double ring_interval) {
+    return polarplot::PlotFrame{.extent = ring_interval * kAutoFitRings,
+                                .ring_interval = ring_interval,
+                                .ring_count = kAutoFitRings};
 }
 
 PlotPlan plan_plot(const PlotInputs& inputs) {

@@ -29,6 +29,25 @@ struct AngleConvention {
     double angle_sign{1.0};
 };
 
+/// The three related numbers describing one frame's polar view: the plotted
+/// axis extent (+/- \p extent on both axes), the radius spacing between rings
+/// (\p ring_interval), and how many rings are drawn (\p ring_count). Always
+/// related by `extent == ring_interval * ring_count`. Owned entirely by
+/// \c polar_plotting, exactly like \ref AngleConvention -- it carries no
+/// vector-magnitude reasoning of its own; callers (e.g. \c ui::plot_plan)
+/// compute the values and hand in the finished bundle.
+struct PlotFrame {
+    double extent{0.0};
+    double ring_interval{0.0};
+    int ring_count{0};
+};
+
+/// Inflate \p frame's \c extent by a fixed headroom factor so the
+/// spoke-degree labels drawn just outside the outer ring (see
+/// \ref spoke_labels) have room to render without being clipped by the axis
+/// view. Pure function -- the test seam for label-headroom padding.
+[[nodiscard]] double inflate_for_labels(PlotFrame frame);
+
 /// Map a math-convention angle (radians, measured from the +x axis,
 /// increasing counterclockwise) to the angle actually used for drawing under
 /// \p convention: `plotted_angle = zero_direction + angle_sign * math_angle`,
@@ -71,24 +90,26 @@ struct RulerTick {
 /// placement, mirroring \ref spoke_labels for the grid's spokes.
 [[nodiscard]] std::vector<RulerTick> ruler_ticks(double ring_interval, int ring_count = 4);
 
-/// Begin an equal-aspect plot centred on the origin, spanning +/- \p extent on
-/// both axes, plus a locked secondary vertical axis (ImPlot's Y2) on the
-/// plot's right side showing a scale ruler: explicit ticks at each ring's
-/// radius (see \ref ruler_ticks), computed from \p ring_interval and
-/// \p ring_count -- these must match the values \ref draw_polar_grid is
-/// called with this frame so the ruler and the grid never disagree. Returns
-/// true when the plot is visible; call \ref end_vector_plot exactly once iff
-/// this returned true (mirrors ImPlot::BeginPlot).
-[[nodiscard]] bool begin_vector_plot(const char* title, double extent, double ring_interval,
-                                     int ring_count = 4);
+/// Begin an equal-aspect plot centred on the origin, spanning +/-
+/// \ref inflate_for_labels "inflate_for_labels(frame)" on both axes (headroom
+/// beyond \p frame's own extent so spoke-degree labels aren't clipped), plus a
+/// locked secondary vertical axis (ImPlot's Y2) on the plot's right side
+/// showing a scale ruler: explicit ticks at each ring's radius (see
+/// \ref ruler_ticks), computed from \p frame's \c ring_interval and
+/// \c ring_count -- callers must pass the same \p frame to \ref draw_polar_grid
+/// and \ref draw_rotation_indicator this frame so the ruler and the grid never
+/// disagree. Returns true when the plot is visible; call \ref end_vector_plot
+/// exactly once iff this returned true (mirrors ImPlot::BeginPlot).
+[[nodiscard]] bool begin_vector_plot(const char* title, PlotFrame frame);
 
 /// End a plot begun with \ref begin_vector_plot.
 void end_vector_plot();
 
-/// Draw concentric rings and radial spokes out to \p max_radius, laid out
-/// according to \p convention, plus a degree label just outside each spoke
-/// (see \ref spoke_labels).
-void draw_polar_grid(double max_radius, AngleConvention convention, int rings = 4, int spokes = 12);
+/// Draw concentric rings and radial spokes out to \p frame's \c extent (with
+/// \p frame's \c ring_count rings), laid out according to \p convention, plus
+/// a degree label just outside each spoke (see \ref spoke_labels). Pass the
+/// same \p frame given to \ref begin_vector_plot this frame.
+void draw_polar_grid(PlotFrame frame, AngleConvention convention, int spokes = 12);
 
 /// One spoke's degree label: \p position is where it should be drawn (in the
 /// plot's own drawing coordinates, already remapped via \p convention) and
@@ -193,8 +214,8 @@ struct RotationIndicatorArc {
 };
 [[nodiscard]] RotationIndicatorArc rotation_indicator_arc(double sweep_sign);
 
-/// Draw a short curved-arrow arc of radius \p radius on the outer ring,
-/// indicating a rotation direction: \p sweep_sign > 0 curves
+/// Draw a short curved-arrow arc of radius \p frame's \c extent on the outer
+/// ring, indicating a rotation direction: \p sweep_sign > 0 curves
 /// counterclockwise, < 0 clockwise (only the sign is used -- see
 /// \ref rotation_indicator_arc). Takes only this plain sweep-sign double,
 /// never a domain "rotation direction" or "measurement convention" type (see
@@ -202,8 +223,9 @@ struct RotationIndicatorArc {
 /// distinct from \ref draw_angle_arc's zero-direction arc: fixed short span,
 /// centered on the plot's right/3-o'clock reference direction rather than
 /// growing from straight up. A pure "draw this now" primitive, like
-/// \ref draw_angle_arc -- callers decide when to call it each frame.
-void draw_rotation_indicator(double radius, double sweep_sign, ArcStyle style = {});
+/// \ref draw_angle_arc -- callers decide when to call it each frame. Pass the
+/// same \p frame given to \ref begin_vector_plot this frame.
+void draw_rotation_indicator(PlotFrame frame, double sweep_sign, ArcStyle style = {});
 
 }  // namespace polarplot
 
