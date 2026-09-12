@@ -195,3 +195,28 @@ TEST_CASE("spoke_labels text stays the math angle while position follows the con
         REQUIRE_THAT(labels[1].position.y, WithinAbs(kExpectedRadius * std::sin(-t), 1e-9));
     }
 }
+
+TEST_CASE("ruler_ticks places one tick per ring at multiples of ring_interval",
+          "[polar_plot][ruler_ticks]") {
+    const std::vector<polarplot::RulerTick> ticks = polarplot::ruler_ticks(2.0, 4);
+
+    REQUIRE(ticks.size() == 4);
+    REQUIRE_THAT(ticks[0].position, WithinAbs(2.0, 1e-12));
+    REQUIRE_THAT(ticks[1].position, WithinAbs(4.0, 1e-12));
+    REQUIRE_THAT(ticks[2].position, WithinAbs(6.0, 1e-12));
+    REQUIRE_THAT(ticks[3].position, WithinAbs(8.0, 1e-12));
+    CHECK(ticks[0].label == "2");
+    CHECK(ticks[1].label == "4");
+    CHECK(ticks[2].label == "6");
+    CHECK(ticks[3].label == "8");
+}
+
+TEST_CASE("ruler_ticks respects a custom ring_count", "[polar_plot][ruler_ticks]") {
+    const std::vector<polarplot::RulerTick> ticks = polarplot::ruler_ticks(0.5, 2);
+
+    REQUIRE(ticks.size() == 2);
+    REQUIRE_THAT(ticks[0].position, WithinAbs(0.5, 1e-12));
+    REQUIRE_THAT(ticks[1].position, WithinAbs(1.0, 1e-12));
+    CHECK(ticks[0].label == "0.5");
+    CHECK(ticks[1].label == "1");
+}

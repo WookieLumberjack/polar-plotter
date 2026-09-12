@@ -190,7 +190,8 @@ void App::draw_plot() const {
 
     const double extent = plan.extent.extent;
 
-    if (!polarplot::begin_vector_plot("##polar", extent)) {
+    if (!polarplot::begin_vector_plot("##polar", extent, plan.extent.ring_interval,
+                                      kAutoFitRings)) {
         return;
     }
     // The grid's outer ring sits a bit inside the view (rather than at

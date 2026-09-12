@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cmath>
+#include <cstdio>
 #include <numbers>
 #include <string>
 #include <vector>
@@ -104,7 +105,19 @@ Point to_plotted_point(Point p, AngleConvention convention) {
     return {radius * std::cos(plotted_angle), radius * std::sin(plotted_angle)};
 }
 
-bool begin_vector_plot(const char* title, double extent) {
+std::vector<RulerTick> ruler_ticks(double ring_interval, int ring_count) {
+    std::vector<RulerTick> ticks;
+    ticks.reserve(static_cast<std::size_t>(ring_count));
+    for (int r = 1; r <= ring_count; ++r) {
+        const double position = ring_interval * static_cast<double>(r);
+        std::array<char, 32> buf{};
+        std::snprintf(buf.data(), buf.size(), "%.6g", position);
+        ticks.push_back(RulerTick{position, std::string(buf.data())});
+    }
+    return ticks;
+}
+
+bool begin_vector_plot(const char* title, double extent, double ring_interval, int ring_count) {
     // Suppress the rectangular plot-area border ImPlot draws by default; the
     // circular grid (see draw_polar_grid) is the only boundary we want
     // visible. Popped in end_vector_plot -- only when BeginPlot succeeds,
@@ -125,6 +138,32 @@ bool begin_vector_plot(const char* title, double extent) {
     // can never drift the limits away from the caller-supplied extent, even
     // though ImPlotFlags_NoInputs already blocks new pan/zoom input.
     ImPlot::SetupAxesLimits(-extent, extent, -extent, extent, ImPlotCond_Always);
+
+    // Secondary vertical axis: a scale ruler on the plot's opposite (right)
+    // side, showing the real distance each ring represents. No gridlines (the
+    // polar grid already draws the rings) and locked against independent
+    // pan/zoom -- it always mirrors the primary y axis' range.
+    constexpr ImPlotAxisFlags kRulerFlags =
+        ImPlotAxisFlags_Opposite | ImPlotAxisFlags_NoGridLines | ImPlotAxisFlags_Lock;
+    ImPlot::SetupAxis(ImAxis_Y2, nullptr, kRulerFlags);
+    ImPlot::SetupAxisLimits(ImAxis_Y2, -extent, extent, ImPlotCond_Always);
+
+    const std::vector<RulerTick> ticks = ruler_ticks(ring_interval, ring_count);
+    std::vector<double> positions;
+    std::vector<std::string> label_strings;
+    std::vector<const char*> label_pointers;
+    positions.reserve(ticks.size());
+    label_strings.reserve(ticks.size());
+    label_pointers.reserve(ticks.size());
+    for (const RulerTick& tick : ticks) {
+        positions.push_back(tick.position);
+        label_strings.push_back(tick.label);
+    }
+    for (const std::string& label : label_strings) {
+        label_pointers.push_back(label.c_str());
+    }
+    ImPlot::SetupAxisTicks(ImAxis_Y2, positions.data(), static_cast<int>(positions.size()),
+                           label_pointers.data());
     return true;
 }
 

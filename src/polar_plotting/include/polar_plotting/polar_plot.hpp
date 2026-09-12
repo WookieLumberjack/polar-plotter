@@ -57,10 +57,30 @@ struct ArrowheadWings {
 /// coincide with \p head.
 [[nodiscard]] ArrowheadWings arrowhead_wing_points(Point tail, Point head, double head_frac);
 
+/// One explicit tick on the vertical scale ruler (see \ref begin_vector_plot):
+/// \p position is the tick's value along the plot's y axis (i.e. a ring's
+/// radius) and \p label is its formatted text.
+struct RulerTick {
+    double position;
+    std::string label;
+};
+
+/// Compute the vertical scale ruler's ticks: one per ring, at radius
+/// `ring_interval * r` for `r` in `[1, ring_count]`, labelled with that
+/// radius value. Pure function -- the test seam for the ruler's tick
+/// placement, mirroring \ref spoke_labels for the grid's spokes.
+[[nodiscard]] std::vector<RulerTick> ruler_ticks(double ring_interval, int ring_count = 4);
+
 /// Begin an equal-aspect plot centred on the origin, spanning +/- \p extent on
-/// both axes. Returns true when the plot is visible; call \ref end_vector_plot
-/// exactly once iff this returned true (mirrors ImPlot::BeginPlot).
-[[nodiscard]] bool begin_vector_plot(const char* title, double extent);
+/// both axes, plus a locked secondary vertical axis (ImPlot's Y2) on the
+/// plot's right side showing a scale ruler: explicit ticks at each ring's
+/// radius (see \ref ruler_ticks), computed from \p ring_interval and
+/// \p ring_count -- these must match the values \ref draw_polar_grid is
+/// called with this frame so the ruler and the grid never disagree. Returns
+/// true when the plot is visible; call \ref end_vector_plot exactly once iff
+/// this returned true (mirrors ImPlot::BeginPlot).
+[[nodiscard]] bool begin_vector_plot(const char* title, double extent, double ring_interval,
+                                     int ring_count = 4);
 
 /// End a plot begun with \ref begin_vector_plot.
 void end_vector_plot();
