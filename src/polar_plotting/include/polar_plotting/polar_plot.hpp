@@ -29,6 +29,25 @@ struct AngleConvention {
     double angle_sign{1.0};
 };
 
+/// The three related numbers describing one frame's polar view: the plotted
+/// axis extent (+/- \p extent on both axes), the radius spacing between rings
+/// (\p ring_interval), and how many rings are drawn (\p ring_count). Always
+/// related by `extent == ring_interval * ring_count`. Owned entirely by
+/// \c polar_plotting, exactly like \ref AngleConvention -- it carries no
+/// vector-magnitude reasoning of its own; callers (e.g. \c ui::plot_plan)
+/// compute the values and hand in the finished bundle.
+struct PlotFrame {
+    double extent{0.0};
+    double ring_interval{0.0};
+    int ring_count{4};
+};
+
+/// Inflate \p frame's \c extent by a fixed headroom factor so the
+/// spoke-degree labels drawn just outside the outer ring (see
+/// \ref spoke_labels) have room to render without being clipped by the axis
+/// view. Pure function -- the test seam for label-headroom padding.
+[[nodiscard]] double inflate_for_labels(PlotFrame frame);
+
 /// Map a math-convention angle (radians, measured from the +x axis,
 /// increasing counterclockwise) to the angle actually used for drawing under
 /// \p convention: `plotted_angle = zero_direction + angle_sign * math_angle`,
