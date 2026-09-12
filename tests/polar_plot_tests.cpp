@@ -211,6 +211,34 @@ TEST_CASE("ruler_ticks places one tick per ring at multiples of ring_interval",
     CHECK(ticks[3].label == "8");
 }
 
+TEST_CASE(
+    "rotation_indicator_arc is centered on the right/3-o'clock reference, "
+    "distinct from draw_angle_arc's top reference",
+    "[polar_plot][rotation_indicator]") {
+    SECTION("positive sweep_sign sweeps counterclockwise from 0") {
+        const polarplot::RotationIndicatorArc arc = polarplot::rotation_indicator_arc(1.0);
+        REQUIRE_THAT(arc.from_angle, WithinAbs(0.0, 1e-12));
+        CHECK(arc.to_angle > arc.from_angle);
+    }
+
+    SECTION("negative sweep_sign sweeps clockwise from 0") {
+        const polarplot::RotationIndicatorArc arc = polarplot::rotation_indicator_arc(-1.0);
+        REQUIRE_THAT(arc.from_angle, WithinAbs(0.0, 1e-12));
+        CHECK(arc.to_angle < arc.from_angle);
+    }
+
+    SECTION("only the sign matters, not the magnitude") {
+        const polarplot::RotationIndicatorArc small = polarplot::rotation_indicator_arc(0.001);
+        const polarplot::RotationIndicatorArc large = polarplot::rotation_indicator_arc(1000.0);
+        REQUIRE_THAT(small.to_angle, WithinAbs(large.to_angle, 1e-12));
+    }
+
+    SECTION("exactly zero is treated as counterclockwise") {
+        const polarplot::RotationIndicatorArc arc = polarplot::rotation_indicator_arc(0.0);
+        CHECK(arc.to_angle > arc.from_angle);
+    }
+}
+
 TEST_CASE("ruler_ticks respects a custom ring_count", "[polar_plot][ruler_ticks]") {
     const std::vector<polarplot::RulerTick> ticks = polarplot::ruler_ticks(0.5, 2);
 

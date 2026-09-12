@@ -88,6 +88,7 @@ PlotPlan plan_plot(const PlotInputs& inputs) {
         .zero_direction = inputs.zero_direction_deg * kDegToRad,
         .angle_sign = compose_angle_sign(inputs.rotation_direction, inputs.measurement_convention),
     };
+    plan.rotation_indicator_sweep_sign = rotation_sweep_sign(inputs.rotation_direction);
     plan.extent =
         inputs.auto_scale ? auto_fit_extent(inputs) : manual_extent(inputs.manual_ring_interval);
 

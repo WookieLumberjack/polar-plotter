@@ -18,4 +18,8 @@ double compose_angle_sign(RotationDirection rotation_direction,
     return to_sign(rotation_direction) * to_sign(measurement_convention);
 }
 
+double rotation_sweep_sign(RotationDirection rotation_direction) {
+    return to_sign(rotation_direction);
+}
+
 }  // namespace ui

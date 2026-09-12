@@ -158,9 +158,10 @@ struct AnnotationVector {
 void draw_annotation_vector(const char* id, AnnotationVector annotation, AngleConvention convention,
                             double head_frac = 0.12, float thickness = 2.0F);
 
-/// Visual style for \ref draw_angle_arc: an RGBA color (components in [0, 1])
-/// and a line thickness (pixels). Kept as a plain struct -- rather than an
-/// ImGui/ImPlot type -- so this header doesn't need to include their headers.
+/// Visual style for \ref draw_angle_arc and \ref draw_rotation_indicator: an
+/// RGBA color (components in [0, 1]) and a line thickness (pixels). Kept as a
+/// plain struct -- rather than an ImGui/ImPlot type -- so this header doesn't
+/// need to include their headers.
 struct ArcStyle {
     float r{1.0F};
     float g{0.65F};
@@ -177,6 +178,32 @@ struct ArcStyle {
 /// "transient" vs. "persistent" annotation lifecycles -- callers decide when
 /// to call it each frame.
 void draw_angle_arc(double radius, double to_angle, ArcStyle style = {});
+
+/// The start/end angle (radians, plot's raw coordinate frame) of the
+/// rotation-direction indicator arc drawn by \ref draw_rotation_indicator for
+/// a given \p sweep_sign. Centered on the plot's right/3-o'clock reference
+/// direction (as opposed to \ref draw_angle_arc's top/12-o'clock reference),
+/// so the two arcs never occupy the same position regardless of \p sweep_sign
+/// or the zero-direction arc's angle. Only \p sweep_sign's sign matters (its
+/// magnitude is ignored, and a value of exactly 0.0 is treated as
+/// counterclockwise). Pure function -- the test seam for this geometry.
+struct RotationIndicatorArc {
+    double from_angle;
+    double to_angle;
+};
+[[nodiscard]] RotationIndicatorArc rotation_indicator_arc(double sweep_sign);
+
+/// Draw a short curved-arrow arc of radius \p radius on the outer ring,
+/// indicating a rotation direction: \p sweep_sign > 0 curves
+/// counterclockwise, < 0 clockwise (only the sign is used -- see
+/// \ref rotation_indicator_arc). Takes only this plain sweep-sign double,
+/// never a domain "rotation direction" or "measurement convention" type (see
+/// docs/agents' ADR 0001), so this stays liftable outside the app. Visually
+/// distinct from \ref draw_angle_arc's zero-direction arc: fixed short span,
+/// centered on the plot's right/3-o'clock reference direction rather than
+/// growing from straight up. A pure "draw this now" primitive, like
+/// \ref draw_angle_arc -- callers decide when to call it each frame.
+void draw_rotation_indicator(double radius, double sweep_sign, ArcStyle style = {});
 
 }  // namespace polarplot
 

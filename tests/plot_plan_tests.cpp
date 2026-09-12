@@ -312,6 +312,40 @@ TEST_CASE(
     CHECK_THAT(plan.extent.ring_interval, WithinRel(expected.ring_interval));
 }
 
+TEST_CASE("rotation indicator: plan_plot derives a plain sweep sign from rotation_direction alone",
+          "[plot_plan]") {
+    // The derived value must be a plain double -- never ui::RotationDirection
+    // or ui::MeasurementConvention (see
+    // docs/adr/0001-polar-plotting-receives-only-composed-angle-sign.md) --
+    // comparing it against a double literal below exercises that.
+    SECTION("counterclockwise composes to a positive sweep sign") {
+        const PlotPlan plan = ui::plan_plot(PlotInputs{
+            .a = kA, .b = kB, .rotation_direction = ui::RotationDirection::CounterClockwise});
+        CHECK(plan.rotation_indicator_sweep_sign == 1.0);
+    }
+
+    SECTION("clockwise composes to a negative sweep sign") {
+        const PlotPlan plan = ui::plan_plot(
+            PlotInputs{.a = kA, .b = kB, .rotation_direction = ui::RotationDirection::Clockwise});
+        CHECK(plan.rotation_indicator_sweep_sign == -1.0);
+    }
+
+    SECTION("measurement_convention does not affect the sweep sign (unlike angle_sign)") {
+        const PlotPlan with_rotation = ui::plan_plot(
+            PlotInputs{.a = kA,
+                       .b = kB,
+                       .rotation_direction = ui::RotationDirection::CounterClockwise,
+                       .measurement_convention = ui::MeasurementConvention::WithRotation});
+        const PlotPlan against_rotation = ui::plan_plot(
+            PlotInputs{.a = kA,
+                       .b = kB,
+                       .rotation_direction = ui::RotationDirection::CounterClockwise,
+                       .measurement_convention = ui::MeasurementConvention::AgainstRotation});
+        CHECK(with_rotation.rotation_indicator_sweep_sign == 1.0);
+        CHECK(against_rotation.rotation_indicator_sweep_sign == 1.0);
+    }
+}
+
 TEST_CASE("manual_extent uses the given interval verbatim and keeps the extent relationship",
           "[plot_plan]") {
     for (const double interval : {0.1, 1.0, 3.0, 42.0, 100.0}) {

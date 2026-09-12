@@ -99,6 +99,12 @@ struct PlotPlan {
     // Composed once from PlotInputs' angle-convention fields, needed by the
     // caller to draw everything above.
     polarplot::AngleConvention convention;
+    // Plain sweep sign for the rotation-direction indicator (see
+    // ui::rotation_sweep_sign): +1 counterclockwise, -1 clockwise. Derived
+    // from PlotInputs::rotation_direction alone, independent of
+    // measurement_convention -- never the RotationDirection enum itself (see
+    // docs/adr/0001-polar-plotting-receives-only-composed-angle-sign.md).
+    double rotation_indicator_sweep_sign{1.0};
     // See auto_fit_extent -- the same values must drive both draw_polar_grid
     // and the plot's axis limits so they never disagree.
     PlotExtent extent;

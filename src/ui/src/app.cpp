@@ -246,6 +246,18 @@ void App::draw_plot() const {
         arc_style.thickness = line_width_;
         polarplot::draw_angle_arc(grid_extent * 0.85, *plan.zero_direction_arc_angle, arc_style);
     }
+    // Always drawn, right on the outer ring (as opposed to the zero-direction
+    // arc's slightly inset radius above) and centered on the plot's
+    // 3-o'clock reference rather than 12-o'clock, so it never visually
+    // overlaps that arc; distinct color reinforces the two are unrelated.
+    polarplot::ArcStyle rotation_indicator_style{};
+    rotation_indicator_style.r = 0.2F;
+    rotation_indicator_style.g = 0.6F;
+    rotation_indicator_style.b = 1.0F;
+    rotation_indicator_style.a = 1.0F;
+    rotation_indicator_style.thickness = line_width_;
+    polarplot::draw_rotation_indicator(grid_extent, plan.rotation_indicator_sweep_sign,
+                                       rotation_indicator_style);
     polarplot::end_vector_plot();
 }
 
