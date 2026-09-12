@@ -204,18 +204,22 @@ void App::draw_plot() const {
         .manual_ring_interval = static_cast<double>(manual_ring_interval_),
     });
 
+    // The grid's outer ring is drawn at exactly `extent` -- the same value
+    // handed to begin_vector_plot's ring_interval/ring_count -- so the scale
+    // ruler's tick positions always land exactly on the rings they label.
+    // The axis view itself is inflated a bit beyond `extent` (rather than
+    // shrinking the grid inside an unchanged view, which would move the
+    // rings off the ruler's ticks) so the grid's spoke degree labels, drawn
+    // just outside the outer ring, have room without getting clipped.
     const double extent = plan.extent.extent;
+    constexpr double kViewExtentFactor = 1.15;
+    const double view_extent = extent * kViewExtentFactor;
 
-    if (!polarplot::begin_vector_plot("##polar", extent, plan.extent.ring_interval,
+    if (!polarplot::begin_vector_plot("##polar", view_extent, plan.extent.ring_interval,
                                       kAutoFitRings)) {
         return;
     }
-    // The grid's outer ring sits a bit inside the view (rather than at
-    // `extent`) so its spoke degree labels, drawn just outside the ring, fit
-    // within the plot's unchanged default view instead of getting clipped.
-    constexpr double kGridExtentFactor = 1.0 / 1.15;
-    const double grid_extent = extent * kGridExtentFactor;
-    polarplot::draw_polar_grid(grid_extent, plan.convention);
+    polarplot::draw_polar_grid(extent, plan.convention);
     polarplot::draw_vector("A", plan.a, plan.convention, marker_style_, /*head_frac=*/0.12,
                            line_width_);
     polarplot::draw_vector("B", plan.b, plan.convention, marker_style_, /*head_frac=*/0.12,
@@ -244,7 +248,7 @@ void App::draw_plot() const {
     if (plan.zero_direction_arc_angle) {
         polarplot::ArcStyle arc_style{};
         arc_style.thickness = line_width_;
-        polarplot::draw_angle_arc(grid_extent * 0.85, *plan.zero_direction_arc_angle, arc_style);
+        polarplot::draw_angle_arc(extent * 0.85, *plan.zero_direction_arc_angle, arc_style);
     }
     // Always drawn, right on the outer ring (as opposed to the zero-direction
     // arc's slightly inset radius above) and centered on the plot's
@@ -256,7 +260,7 @@ void App::draw_plot() const {
     rotation_indicator_style.b = 1.0F;
     rotation_indicator_style.a = 1.0F;
     rotation_indicator_style.thickness = line_width_;
-    polarplot::draw_rotation_indicator(grid_extent, plan.rotation_indicator_sweep_sign,
+    polarplot::draw_rotation_indicator(extent, plan.rotation_indicator_sweep_sign,
                                        rotation_indicator_style);
     polarplot::end_vector_plot();
 }
