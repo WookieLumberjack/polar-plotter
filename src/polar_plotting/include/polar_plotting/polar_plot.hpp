@@ -39,7 +39,7 @@ struct AngleConvention {
 struct PlotFrame {
     double extent{0.0};
     double ring_interval{0.0};
-    int ring_count{4};
+    int ring_count;
 };
 
 /// Inflate \p frame's \c extent by a fixed headroom factor so the
