@@ -176,6 +176,21 @@ enum class TipMarkerStyle : std::uint8_t {
 void draw_arrow(const char* label, Point tail, Point head, AngleConvention convention,
                 double head_frac = 0.12, float thickness = 2.0F);
 
+/// RGBA color override for a named vector's tip marker (components in
+/// [0, 1]). Kept as a plain struct -- rather than an ImGui/ImPlot type -- so
+/// this header doesn't need to include their headers, matching \ref ArcStyle.
+struct MarkerColor {
+    float r{0.0F};
+    float g{0.0F};
+    float b{0.0F};
+    float a{1.0F};
+};
+
+/// The fixed, shared marker color used for a hovered tip (see #44/#47):
+/// applies identically to A or B, never per-vector-tinted, and is distinct
+/// from \ref draw_vector's default idle marker color.
+inline constexpr MarkerColor kHoverMarkerColor{1.0F, 0.85F, 0.2F, 1.0F};
+
 /// Draw a named vector: an arrow from the origin to \p head, plus a tip
 /// marker (styled per \p marker_style) and a tip label showing \p label,
 /// both drawn unconditionally -- even when \p head is exactly the origin, in
@@ -183,9 +198,45 @@ void draw_arrow(const char* label, Point tail, Point head, AngleConvention conve
 /// vector a "named vector" as opposed to a bare annotation arrow drawn via
 /// \ref draw_arrow directly; \c polar_plotting has no notion of *why* a
 /// vector is named, only that this entry point always marks and labels it.
-/// \p thickness is the shaft/head line weight in pixels.
+/// \p thickness is the shaft/head line weight in pixels. \p marker_color, when
+/// non-null, overrides the tip marker's fill/line color (e.g. with
+/// \ref kHoverMarkerColor for a hover cue); it is left null by every existing
+/// caller, so the default appearance (today's fixed idle color) is unchanged.
+/// The override applies only to the tip marker -- the shaft, arrowhead, and
+/// tip label always keep their normal color.
 void draw_vector(const char* label, Point head, AngleConvention convention,
-                 TipMarkerStyle marker_style, double head_frac = 0.12, float thickness = 2.0F);
+                 TipMarkerStyle marker_style, double head_frac = 0.12, float thickness = 2.0F,
+                 const MarkerColor* marker_color = nullptr);
+
+/// Which of A's or B's tip (if either) is the target of a hover/drag
+/// interaction this frame; \c kNone when neither is within hit range of the
+/// cursor. See #44 for the broader interaction state machine this is one
+/// piece of.
+enum class HoverTarget : std::uint8_t {
+    kNone,
+    kA,
+    kB,
+};
+
+/// Pure hit-test: given the mouse position and both named vectors' tips
+/// (\p mouse, \p tip_a, \p tip_b -- all three in the same consistent space,
+/// e.g. pixel coordinates, so plain Euclidean distance is meaningful), decide
+/// which tip (if any) is hit within \p hit_radius of the mouse, applying
+/// #44's overlap tie-break: when both A's and B's tips are within
+/// \p hit_radius of the mouse, the nearer one wins; an exact tie (equal
+/// distance) favors A. Independent of ImGui/ImPlot state -- the test seam for
+/// hover/drag hit-testing.
+[[nodiscard]] HoverTarget hover_hit_test(Point mouse, Point tip_a, Point tip_b, double hit_radius);
+
+/// Impure integration point: resolves \p head_a/\p head_b (math-convention
+/// space, like \ref draw_vector's \p head) to their on-screen tip positions
+/// under \p convention, queries the live mouse position, and applies
+/// \ref hover_hit_test with the fixed pixel hit-radius rule from #44
+/// (`max(marker's own pixel size, 10px)`). Must be called between
+/// \ref begin_vector_plot / \ref end_vector_plot this frame, after A and B's
+/// positions for the frame are known. Returns \c kNone when the plot itself
+/// isn't hovered.
+[[nodiscard]] HoverTarget hover_target(Point head_a, Point head_b, AngleConvention convention);
 
 /// A free-vector annotation: an arrow beginning at an explicit \p start point
 /// (never assumed to originate at the origin) and displaced by \p vector.

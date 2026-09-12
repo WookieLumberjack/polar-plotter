@@ -356,10 +356,19 @@ void App::draw_plot() const {
         return;
     }
     polarplot::draw_polar_grid(plan.extent, plan.convention);
+
+    // Hover-highlight cue for A/B (see #44/#47): whichever tip is under the
+    // cursor gets its marker recolored; no drag capability yet.
+    const polarplot::HoverTarget hovered = polarplot::hover_target(plan.a, plan.b, plan.convention);
+    const polarplot::MarkerColor* const a_marker_color =
+        (hovered == polarplot::HoverTarget::kA) ? &polarplot::kHoverMarkerColor : nullptr;
+    const polarplot::MarkerColor* const b_marker_color =
+        (hovered == polarplot::HoverTarget::kB) ? &polarplot::kHoverMarkerColor : nullptr;
+
     polarplot::draw_vector("A", plan.a, plan.convention, marker_style_, /*head_frac=*/0.12,
-                           line_width_);
+                           line_width_, a_marker_color);
     polarplot::draw_vector("B", plan.b, plan.convention, marker_style_, /*head_frac=*/0.12,
-                           line_width_);
+                           line_width_, b_marker_color);
     if (plan.difference) {
         polarplot::draw_vector("A - B", *plan.difference, plan.convention, marker_style_,
                                /*head_frac=*/0.12, line_width_);

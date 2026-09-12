@@ -1,5 +1,6 @@
 #include "polar_plotting/polar_plot.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -7,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include <imgui.h>
 #include <implot.h>
 
 namespace polarplot {
@@ -282,13 +284,17 @@ constexpr float kMarkerSize = 6.0F;
 constexpr ImVec2 kLabelPixelOffset{8.0F, -8.0F};
 constexpr ImVec4 kTipColor{0.9F, 0.9F, 0.9F, 1.0F};
 
-void draw_tip_marker(const char* label, Point tip, TipMarkerStyle marker_style) {
+void draw_tip_marker(const char* label, Point tip, TipMarkerStyle marker_style,
+                     const MarkerColor* marker_color) {
     const std::string id = std::string("##tip_") + label;
     const ImPlotMarker marker =
         (marker_style == TipMarkerStyle::kCrossHair) ? ImPlotMarker_Cross : ImPlotMarker_Circle;
+    const ImVec4 color = (marker_color != nullptr) ? ImVec4(marker_color->r, marker_color->g,
+                                                            marker_color->b, marker_color->a)
+                                                   : kTipColor;
     const ImPlotSpec spec{
-        ImPlotProp_Marker,          marker,    ImPlotProp_MarkerSize,      kMarkerSize,
-        ImPlotProp_MarkerFillColor, kTipColor, ImPlotProp_MarkerLineColor, kTipColor};
+        ImPlotProp_Marker,          marker, ImPlotProp_MarkerSize,      kMarkerSize,
+        ImPlotProp_MarkerFillColor, color,  ImPlotProp_MarkerLineColor, color};
     ImPlot::PlotScatter(id.c_str(), &tip.x, &tip.y, 1, spec);
 }
 
@@ -299,16 +305,54 @@ void draw_tip_label(const char* label, Point tip) {
 }  // namespace
 
 void draw_vector(const char* label, Point head, AngleConvention convention,
-                 TipMarkerStyle marker_style, double head_frac, float thickness) {
+                 TipMarkerStyle marker_style, double head_frac, float thickness,
+                 const MarkerColor* marker_color) {
     // Draw the tip marker before the arrow shaft/head so it sits behind the
     // arrowhead and peeks out past the tip, instead of being fully covered
     // when the marker is larger than the arrowhead.
     const Point tip = to_plotted_point(head, convention);
-    draw_tip_marker(label, tip, marker_style);
+    draw_tip_marker(label, tip, marker_style, marker_color);
 
     draw_arrow(label, Point{0.0, 0.0}, head, convention, head_frac, thickness);
 
     draw_tip_label(label, tip);
+}
+
+HoverTarget hover_hit_test(Point mouse, Point tip_a, Point tip_b, double hit_radius) {
+    const double dist_a = std::hypot(mouse.x - tip_a.x, mouse.y - tip_a.y);
+    const double dist_b = std::hypot(mouse.x - tip_b.x, mouse.y - tip_b.y);
+    const bool a_in_range = dist_a <= hit_radius;
+    const bool b_in_range = dist_b <= hit_radius;
+
+    if (!a_in_range && !b_in_range) {
+        return HoverTarget::kNone;
+    }
+    if (a_in_range && !b_in_range) {
+        return HoverTarget::kA;
+    }
+    if (b_in_range && !a_in_range) {
+        return HoverTarget::kB;
+    }
+    // Both in range: nearer tip wins; an exact tie favors A.
+    return (dist_b < dist_a) ? HoverTarget::kB : HoverTarget::kA;
+}
+
+HoverTarget hover_target(Point head_a, Point head_b, AngleConvention convention) {
+    if (!ImPlot::IsPlotHovered()) {
+        return HoverTarget::kNone;
+    }
+
+    const Point tip_a = to_plotted_point(head_a, convention);
+    const Point tip_b = to_plotted_point(head_b, convention);
+    const ImVec2 pixel_a = ImPlot::PlotToPixels(tip_a.x, tip_a.y);
+    const ImVec2 pixel_b = ImPlot::PlotToPixels(tip_b.x, tip_b.y);
+    const ImVec2 mouse = ImGui::GetMousePos();
+
+    const double hit_radius_px = std::max<double>(static_cast<double>(kMarkerSize), 10.0);
+    return hover_hit_test(Point{static_cast<double>(mouse.x), static_cast<double>(mouse.y)},
+                          Point{static_cast<double>(pixel_a.x), static_cast<double>(pixel_a.y)},
+                          Point{static_cast<double>(pixel_b.x), static_cast<double>(pixel_b.y)},
+                          hit_radius_px);
 }
 
 void draw_annotation_vector(const char* id, AnnotationVector annotation, AngleConvention convention,

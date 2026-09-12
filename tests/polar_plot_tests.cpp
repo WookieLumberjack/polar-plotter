@@ -289,6 +289,55 @@ TEST_CASE("PlotFrame's extent is derived from its ring_interval and ring_count",
     }
 }
 
+TEST_CASE("hover_hit_test misses when the mouse is outside both hit radii", "[polar_plot][hover]") {
+    const polarplot::HoverTarget hit =
+        polarplot::hover_hit_test(/*mouse=*/{100.0, 100.0}, /*tip_a=*/{0.0, 0.0},
+                                  /*tip_b=*/{50.0, 0.0}, /*hit_radius=*/10.0);
+    REQUIRE(hit == polarplot::HoverTarget::kNone);
+}
+
+TEST_CASE("hover_hit_test hits A when only A's tip is in range", "[polar_plot][hover]") {
+    const polarplot::HoverTarget hit =
+        polarplot::hover_hit_test(/*mouse=*/{2.0, 0.0}, /*tip_a=*/{0.0, 0.0},
+                                  /*tip_b=*/{50.0, 0.0}, /*hit_radius=*/10.0);
+    REQUIRE(hit == polarplot::HoverTarget::kA);
+}
+
+TEST_CASE("hover_hit_test hits B when only B's tip is in range", "[polar_plot][hover]") {
+    const polarplot::HoverTarget hit =
+        polarplot::hover_hit_test(/*mouse=*/{51.0, 0.0}, /*tip_a=*/{0.0, 0.0},
+                                  /*tip_b=*/{50.0, 0.0}, /*hit_radius=*/10.0);
+    REQUIRE(hit == polarplot::HoverTarget::kB);
+}
+
+TEST_CASE("hover_hit_test picks the nearer tip when both are in range", "[polar_plot][hover]") {
+    // A is at distance 3 from the mouse, B at distance 8 -- both within the
+    // radius 10 hit range, but A is nearer.
+    const polarplot::HoverTarget nearer_a =
+        polarplot::hover_hit_test(/*mouse=*/{0.0, 0.0}, /*tip_a=*/{3.0, 0.0},
+                                  /*tip_b=*/{0.0, 8.0}, /*hit_radius=*/10.0);
+    REQUIRE(nearer_a == polarplot::HoverTarget::kA);
+
+    const polarplot::HoverTarget nearer_b =
+        polarplot::hover_hit_test(/*mouse=*/{0.0, 0.0}, /*tip_a=*/{0.0, 8.0},
+                                  /*tip_b=*/{3.0, 0.0}, /*hit_radius=*/10.0);
+    REQUIRE(nearer_b == polarplot::HoverTarget::kB);
+}
+
+TEST_CASE("hover_hit_test favors A on an exact tie", "[polar_plot][hover]") {
+    const polarplot::HoverTarget hit =
+        polarplot::hover_hit_test(/*mouse=*/{0.0, 0.0}, /*tip_a=*/{5.0, 0.0},
+                                  /*tip_b=*/{0.0, 5.0}, /*hit_radius=*/10.0);
+    REQUIRE(hit == polarplot::HoverTarget::kA);
+}
+
+TEST_CASE("hover_hit_test treats the hit radius boundary as inclusive", "[polar_plot][hover]") {
+    const polarplot::HoverTarget hit =
+        polarplot::hover_hit_test(/*mouse=*/{0.0, 0.0}, /*tip_a=*/{10.0, 0.0},
+                                  /*tip_b=*/{50.0, 0.0}, /*hit_radius=*/10.0);
+    REQUIRE(hit == polarplot::HoverTarget::kA);
+}
+
 TEST_CASE("inflate_for_labels inflates a PlotFrame's extent by a fixed headroom factor",
           "[polar_plot][plot_frame]") {
     SECTION("scales proportionally to extent") {
