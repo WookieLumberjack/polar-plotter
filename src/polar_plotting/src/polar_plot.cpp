@@ -66,6 +66,19 @@ void plot_arrow_shape(const std::string& shaft_id, const std::string& head_id, P
         return;
     }
 
+    // Extend ImPlot's legend hover-bold effect (already applied automatically
+    // to the shaft item itself, since that's a real legend entry) to the
+    // arrowhead, which is a separate `##`-prefixed ImPlot item with no legend
+    // entry of its own and therefore doesn't participate in that automatic
+    // scaling on its own -- #71. Matches ImPlot's own internal
+    // ITEM_HIGHLIGHT_LINE_SCALE. shaft_id is only ever a real (non `##`)
+    // legend entry for a named vector's own shaft (see draw_arrow); an
+    // annotation's `##`-prefixed shaft_id never has a legend entry, so this
+    // is always false for annotations.
+    constexpr float kHoverLineScale = 2.0F;
+    const float head_thickness =
+        ImPlot::IsLegendEntryHovered(shaft_id.c_str()) ? thickness * kHoverLineScale : thickness;
+
     const ImVec2 pixel_tail = ImPlot::PlotToPixels(tail.x, tail.y);
     const ImVec2 pixel_head = ImPlot::PlotToPixels(head.x, head.y);
     const double shaft_length_px = std::hypot(static_cast<double>(pixel_head.x - pixel_tail.x),
@@ -78,7 +91,7 @@ void plot_arrow_shape(const std::string& shaft_id, const std::string& head_id, P
     const std::array<double, 3> hy{wings.first.y, head.y, wings.second.y};
 
     ImPlot::PlotLine(head_id.c_str(), hx.data(), hy.data(), 3,
-                     arrow_line_spec(&resolved_color, thickness));
+                     arrow_line_spec(&resolved_color, head_thickness));
 }
 
 }  // namespace
@@ -103,6 +116,12 @@ ArrowheadWings arrowhead_wing_points(Point tail, Point head, double head_frac) {
     const double wing_y = kWing * h * ux;
 
     return {Point{back_x + wing_x, back_y - wing_y}, Point{back_x - wing_x, back_y + wing_y}};
+}
+
+ZeroDirectionTick zero_direction_arc_tick(double radius, double extent) {
+    constexpr double kTickHalfLengthFactor = 0.025;
+    const double half_length = kTickHalfLengthFactor * extent;
+    return {Point{0.0, radius - half_length}, Point{0.0, radius + half_length}};
 }
 
 double head_frac_for_fixed_pixels(double head_length_px, double shaft_length_px) {
@@ -229,6 +248,17 @@ bool begin_vector_plot(const char* title, PlotFrame frame) {
     // gridlines entirely rather than just hiding the labels.
     constexpr ImPlotAxisFlags kAxisFlags = ImPlotAxisFlags_NoDecorations;
     ImPlot::SetupAxes("x", "y", kAxisFlags, kAxisFlags);
+    // NoButtons: legend visibility is controlled solely by the side panel's
+    // checkboxes -- click-to-hide would duplicate that control and, for A/B
+    // (which have no checkbox), would let a vector be hidden with no way to
+    // bring it back. NoHighlightAxis: suppress ImPlot's default
+    // highlight-hovered-legend-entry's-axis behavior (the Y2 ruler lighting
+    // up to match the hovered entry's color reads as an unrelated part of the
+    // window changing). Location matches ImPlot's own default
+    // (ImPlotLocation_NorthWest) -- only the flags are new (#71).
+    constexpr ImPlotLegendFlags kLegendFlags =
+        ImPlotLegendFlags_NoButtons | ImPlotLegendFlags_NoHighlightAxis;
+    ImPlot::SetupLegend(ImPlotLocation_NorthWest, kLegendFlags);
     const AxisHalfRanges half_ranges = axis_half_ranges(static_cast<double>(canvas_size.x),
                                                         static_cast<double>(canvas_size.y), extent);
     // Re-apply every frame (ImPlotCond_Always) so leftover pan/zoom state
@@ -352,11 +382,17 @@ std::vector<SpokeLabel> spoke_labels(double max_radius, AngleConvention conventi
 }
 
 void draw_arrow(const char* label, Point tail, Point head, AngleConvention convention,
-                float thickness) {
+                float thickness, const MarkerColor* line_color) {
     const Point ptail = to_plotted_point(tail, convention);
     const Point phead = to_plotted_point(head, convention);
     const std::string head_id = std::string("##head_") + label;
-    plot_arrow_shape(label, head_id, ptail, phead, /*line_color=*/nullptr, thickness);
+
+    if (line_color == nullptr) {
+        plot_arrow_shape(label, head_id, ptail, phead, /*line_color=*/nullptr, thickness);
+        return;
+    }
+    const ImVec4 resolved_line_color{line_color->r, line_color->g, line_color->b, line_color->a};
+    plot_arrow_shape(label, head_id, ptail, phead, &resolved_line_color, thickness);
 }
 
 namespace {
@@ -365,39 +401,56 @@ namespace {
 // implementation time per the spec.
 constexpr float kMarkerSize = 6.0F;
 constexpr ImVec2 kLabelPixelOffset{8.0F, -8.0F};
-constexpr ImVec4 kTipColor{0.9F, 0.9F, 0.9F, 1.0F};
 
 void draw_tip_marker(const char* label, Point tip, TipMarkerStyle marker_style,
                      const MarkerColor* marker_color) {
     const std::string id = std::string("##tip_") + label;
     const ImPlotMarker marker =
         (marker_style == TipMarkerStyle::kCrossHair) ? ImPlotMarker_Cross : ImPlotMarker_Circle;
-    const ImVec4 color = (marker_color != nullptr) ? ImVec4(marker_color->r, marker_color->g,
-                                                            marker_color->b, marker_color->a)
-                                                   : kTipColor;
-    const ImPlotSpec spec{
-        ImPlotProp_Marker,          marker, ImPlotProp_MarkerSize,      kMarkerSize,
-        ImPlotProp_MarkerFillColor, color,  ImPlotProp_MarkerLineColor, color};
+    // Extend the legend hover-bold effect to the tip marker too, which
+    // (like the arrowhead in plot_arrow_shape) is a separate `##`-prefixed
+    // item with no legend entry of its own -- #71. Matches ImPlot's own
+    // internal ITEM_HIGHLIGHT_MARK_SCALE. \p label is the vector's shaft's
+    // own legend-entry id (see draw_arrow), so this stays in sync with the
+    // shaft's own (automatic) and the arrowhead's (plot_arrow_shape) bolding.
+    constexpr float kHoverMarkerScale = 1.25F;
+    const float marker_size =
+        ImPlot::IsLegendEntryHovered(label) ? kMarkerSize * kHoverMarkerScale : kMarkerSize;
+    ImPlotSpec spec{ImPlotProp_Marker, marker, ImPlotProp_MarkerSize, marker_size};
+    if (marker_color != nullptr) {
+        const ImVec4 color(marker_color->r, marker_color->g, marker_color->b, marker_color->a);
+        spec.MarkerFillColor = color;
+        spec.MarkerLineColor = color;
+    }
     ImPlot::PlotScatter(id.c_str(), &tip.x, &tip.y, 1, spec);
 }
 
-void draw_tip_label(const char* label, Point tip) {
-    ImPlot::Annotation(tip.x, tip.y, kTipColor, kLabelPixelOffset, false, "%s", label);
+// \p marker_color, when non-null, colors the label the same as the tip
+// marker/shaft (theme-text default or the hover/drag override -- see \ref
+// draw_vector). When null, falls back to whatever ImPlot resolved for the
+// item drawn immediately before this call (the arrow head, via
+// ImPlot::GetLastItemColor()) rather than any color hardcoded here.
+void draw_tip_label(const char* label, Point tip, const MarkerColor* marker_color) {
+    const ImVec4 color = (marker_color != nullptr) ? ImVec4(marker_color->r, marker_color->g,
+                                                            marker_color->b, marker_color->a)
+                                                   : ImPlot::GetLastItemColor();
+    ImPlot::Annotation(tip.x, tip.y, color, kLabelPixelOffset, false, "%s", label);
 }
 
 }  // namespace
 
 void draw_vector(const char* label, Point head, AngleConvention convention,
-                 TipMarkerStyle marker_style, float thickness, const MarkerColor* marker_color) {
+                 TipMarkerStyle marker_style, float thickness, const MarkerColor* marker_color,
+                 const MarkerColor* line_color) {
     // Draw the tip marker before the arrow shaft/head so it sits behind the
     // arrowhead and peeks out past the tip, instead of being fully covered
     // when the marker is larger than the arrowhead.
     const Point tip = to_plotted_point(head, convention);
     draw_tip_marker(label, tip, marker_style, marker_color);
 
-    draw_arrow(label, Point{0.0, 0.0}, head, convention, thickness);
+    draw_arrow(label, Point{0.0, 0.0}, head, convention, thickness, line_color);
 
-    draw_tip_label(label, tip);
+    draw_tip_label(label, tip, marker_color);
 }
 
 void draw_length_tick(double magnitude, MarkerColor color) {
@@ -499,11 +552,10 @@ Point clamp_to_rect(Point p, PixelRect rect) {
     return {std::clamp(p.x, rect.min.x, rect.max.x), std::clamp(p.y, rect.min.y, rect.max.y)};
 }
 
-InteractiveVectorResult draw_interactive_vector(const char* label, Point head,
-                                                AngleConvention convention,
-                                                TipMarkerStyle marker_style, bool is_hover_target,
-                                                bool was_dragging, float thickness, bool auto_scale,
-                                                double visible_extent) {
+InteractiveVectorResult draw_interactive_vector(
+    const char* label, Point head, AngleConvention convention, TipMarkerStyle marker_style,
+    bool is_hover_target, bool was_dragging, float thickness, bool auto_scale,
+    double visible_extent, const MarkerColor* default_marker_color, const MarkerColor* line_color) {
     constexpr ImGuiMouseButton kDragButton = ImGuiMouseButton_Left;
     const bool mouse_down = ImGui::IsMouseDown(kDragButton);
     const bool mouse_pressed = ImGui::IsMouseClicked(kDragButton);
@@ -549,7 +601,7 @@ InteractiveVectorResult draw_interactive_vector(const char* label, Point head,
         updated_head = from_plotted_point(plotted, convention);
     }
 
-    const MarkerColor* marker_color = nullptr;
+    const MarkerColor* marker_color = default_marker_color;
     if (state == InteractionState::kDragging) {
         marker_color = &kDraggingMarkerColor;
     } else if (state == InteractionState::kHovered ||
@@ -557,7 +609,7 @@ InteractiveVectorResult draw_interactive_vector(const char* label, Point head,
         marker_color = &kHoverMarkerColor;
     }
 
-    draw_vector(label, updated_head, convention, marker_style, thickness, marker_color);
+    draw_vector(label, updated_head, convention, marker_style, thickness, marker_color, line_color);
 
     return {updated_head, state};
 }
@@ -648,10 +700,23 @@ RotationIndicatorArc rotation_indicator_arc(double sweep_sign) {
     return {.from_angle = kRightAngle, .to_angle = kRightAngle + (sign * kRotationIndicatorSweep)};
 }
 
+RotationIndicatorLabel rotation_indicator_label(double extent, double sweep_sign) {
+    const RotationIndicatorArc arc = rotation_indicator_arc(sweep_sign);
+    const double mid_angle = (arc.from_angle + arc.to_angle) / 2.0;
+    const double label_radius = extent * kLabelRadiusFactor;
+    const Point position{label_radius * std::cos(mid_angle), label_radius * std::sin(mid_angle)};
+    return {position, "Rot."};
+}
+
 void draw_rotation_indicator(PlotFrame frame, double sweep_sign, ArcStyle style) {
     const RotationIndicatorArc arc = rotation_indicator_arc(sweep_sign);
     draw_arc_with_head(frame.extent(), arc.from_angle, arc.to_angle, style, "##rotation_indicator",
                        "##rotation_indicator_head");
+
+    const RotationIndicatorLabel label = rotation_indicator_label(frame.extent(), sweep_sign);
+    const ImVec4 color{style.r, style.g, style.b, style.a};
+    ImPlot::Annotation(label.position.x, label.position.y, color, ImVec2(0.0F, 0.0F), false, "%s",
+                       label.text.c_str());
 }
 
 }  // namespace polarplot
