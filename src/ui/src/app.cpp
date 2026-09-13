@@ -19,6 +19,7 @@
 #include "ui/plot_plan.hpp"
 #include "ui/polar_display.hpp"
 #include "ui/theme.hpp"
+#include "ui/vector_palette.hpp"
 #include "ui/zero_direction.hpp"
 #include "vector_math/vec2.hpp"
 
@@ -74,6 +75,14 @@ polarplot::MarkerColor to_marker_color(const ImVec4& color) {
     return {color.x, color.y, color.z, color.w};
 }
 
+// Convert a ThemeStyle's text color to a polarplot::MarkerColor, for use as
+// the default (idle-state) tip marker/label color override -- see #68: this
+// replaces polar_plotting's old hardcoded near-white default, so tip
+// markers/labels stay visible against light themes too.
+polarplot::MarkerColor to_marker_color(const ThemeColor& color) {
+    return {color.r, color.g, color.b, color.a};
+}
+
 // Draw a length tick for a just-drawn vector: magnitude is always
 // std::hypot(x, y) of \p head's math-convention components -- never its
 // plotted y-coordinate -- and color is read off whatever item ImPlot last
@@ -91,19 +100,28 @@ void App::draw_vector_input(const char* label_prefix, VectorInput& input) {
     PolarDisplay display =
         input.polar_active_ ? input.pending_polar_ : to_polar_display(to_vec(input.xy));
 
-    const std::string amplitude_label = std::string(label_prefix) + ": Amplitude";
-    const std::string phase_label = std::string(label_prefix) + ": Phase (deg)";
-    const std::string real_label = std::string(label_prefix) + ": Real";
-    const std::string imag_label = std::string(label_prefix) + ": Imag";
+    const std::string amplitude_label = std::string(label_prefix) + ": Amp";
+    const std::string phase_label = std::string(label_prefix) + ": Phase";
+    const std::string real_label = std::string(label_prefix) + ": Re";
+    const std::string imag_label = std::string(label_prefix) + ": Im";
 
+    const float half_width = (ImGui::CalcItemWidth() - ImGui::GetStyle().ItemSpacing.x) / 2.0F;
+
+    ImGui::SetNextItemWidth(half_width);
     const bool amp_changed =
         ImGui::InputFloat(amplitude_label.c_str(), &display.amplitude, 0.0F, 0.0F, "%.3f");
     const bool amp_focused = ImGui::IsItemFocused();
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(half_width);
     const bool phase_changed =
         ImGui::InputFloat(phase_label.c_str(), &display.phase_deg, 0.0F, 0.0F, "%.2f");
     const bool phase_focused = ImGui::IsItemFocused();
+
+    ImGui::SetNextItemWidth(half_width);
     const bool real_changed =
         ImGui::InputFloat(real_label.c_str(), input.xy.data(), 0.0F, 0.0F, "%.3f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(half_width);
     const bool imag_changed =
         ImGui::InputFloat(imag_label.c_str(), input.xy.data() + 1, 0.0F, 0.0F, "%.3f");
 
@@ -415,15 +433,7 @@ void App::draw_controls() {
                            ImGuiSliderFlags_Logarithmic);
     }
 
-    const vecmath::Polar pa = vecmath::to_polar(a);
-    const vecmath::Polar pb = vecmath::to_polar(b);
-
     ImGui::SeparatorText("Derived quantities");
-    ImGui::Text("|A| = %.4f   arg A = %.2f deg", pa.radius, pa.angle_rad * kRadToDeg);
-    ImGui::Text("|B| = %.4f   arg B = %.2f deg", pb.radius, pb.angle_rad * kRadToDeg);
-    ImGui::Text("A - B = (%.4f, %.4f)   |A - B| = %.4f", (a - b).x, (a - b).y,
-                vecmath::magnitude(a - b));
-    ImGui::Text("A + B = (%.4f, %.4f)", (a + b).x, (a + b).y);
     ImGui::Text("A . B = %.4f", vecmath::dot(a, b));
     ImGui::Text("angle(A, B) = %.2f deg", vecmath::angle_between(a, b) * kRadToDeg);
 
@@ -495,6 +505,12 @@ void App::draw_plot() {
     }
     polarplot::draw_polar_grid(view_frame, plan.convention);
 
+    // Theme-aware default tip marker/label color (#68): applies to every
+    // named vector's tip marker/label whenever no hover/drag override takes
+    // precedence, so markers stay visible against light themes instead of
+    // polar_plotting's old hardcoded near-white default.
+    const polarplot::MarkerColor tip_marker_color = to_marker_color(theme_style(theme_).text);
+
     // Hover/click-drag for A/B (see #44/#47/#48): whichever tip is under the
     // cursor is this frame's hit-test target; draw_interactive_vector turns
     // that plus each vector's own carried-over dragging state into this
@@ -507,13 +523,15 @@ void App::draw_plot() {
     // through as the visible-extent clamp keeps a manual-scale drag from
     // moving the tip past what's currently visible. Ignored while
     // auto_scale_ is true.
+    const polarplot::MarkerColor color_a = vector_color("A");
+    const polarplot::MarkerColor color_b = vector_color("B");
     const polarplot::InteractiveVectorResult a_result = polarplot::draw_interactive_vector(
         "A", plan.a, plan.convention, marker_style_, hovered == polarplot::HoverTarget::kA,
-        a_.dragging_, line_width_, auto_scale_, extent);
+        a_.dragging_, line_width_, auto_scale_, extent, &tip_marker_color, &color_a);
     draw_length_tick_for(a_result.head);
     const polarplot::InteractiveVectorResult b_result = polarplot::draw_interactive_vector(
         "B", plan.b, plan.convention, marker_style_, hovered == polarplot::HoverTarget::kB,
-        b_.dragging_, line_width_, auto_scale_, extent);
+        b_.dragging_, line_width_, auto_scale_, extent, &tip_marker_color, &color_b);
     draw_length_tick_for(b_result.head);
     // Live drag tooltip (#44/#51): only while actively dragging, not during a
     // plain pre-drag hover -- disappears the instant the drag ends, since a
@@ -527,31 +545,39 @@ void App::draw_plot() {
     apply_interactive_result(a_, a_result);
     apply_interactive_result(b_, b_result);
     if (plan.difference) {
+        const polarplot::MarkerColor color = vector_color("A - B");
         polarplot::draw_vector("A - B", *plan.difference, plan.convention, marker_style_,
-                               line_width_);
+                               line_width_, &tip_marker_color, &color);
         draw_length_tick_for(*plan.difference);
     }
     if (plan.sum) {
-        polarplot::draw_vector("A + B", *plan.sum, plan.convention, marker_style_, line_width_);
+        const polarplot::MarkerColor color = vector_color("A + B");
+        polarplot::draw_vector("A + B", *plan.sum, plan.convention, marker_style_, line_width_,
+                               &tip_marker_color, &color);
         draw_length_tick_for(*plan.sum);
     }
     if (plan.difference_ba) {
+        const polarplot::MarkerColor color = vector_color("B - A");
         polarplot::draw_vector("B - A", *plan.difference_ba, plan.convention, marker_style_,
-                               line_width_);
+                               line_width_, &tip_marker_color, &color);
         draw_length_tick_for(*plan.difference_ba);
     }
     if (plan.product) {
-        polarplot::draw_vector("A x B", *plan.product, plan.convention, marker_style_, line_width_);
+        const polarplot::MarkerColor color = vector_color("A x B");
+        polarplot::draw_vector("A x B", *plan.product, plan.convention, marker_style_, line_width_,
+                               &tip_marker_color, &color);
         draw_length_tick_for(*plan.product);
     }
     if (plan.quotient_ab) {
+        const polarplot::MarkerColor color = vector_color("A / B");
         polarplot::draw_vector("A / B", *plan.quotient_ab, plan.convention, marker_style_,
-                               line_width_);
+                               line_width_, &tip_marker_color, &color);
         draw_length_tick_for(*plan.quotient_ab);
     }
     if (plan.quotient_ba) {
+        const polarplot::MarkerColor color = vector_color("B / A");
         polarplot::draw_vector("B / A", *plan.quotient_ba, plan.convention, marker_style_,
-                               line_width_);
+                               line_width_, &tip_marker_color, &color);
         draw_length_tick_for(*plan.quotient_ba);
     }
     // Positional ids: fine because draw_annotation_vector's id is never shown
@@ -567,10 +593,26 @@ void App::draw_plot() {
         polarplot::draw_annotation_vector("diff_segment_b_to_a_tip", *plan.difference_segment,
                                           plan.convention, line_width_);
     }
+    if (plan.difference_segment_ba) {
+        polarplot::draw_annotation_vector("diff_segment_a_to_b_tip", *plan.difference_segment_ba,
+                                          plan.convention, line_width_);
+    }
     if (plan.zero_direction_arc_angle) {
         polarplot::ArcStyle arc_style{};
         arc_style.thickness = line_width_;
-        polarplot::draw_angle_arc(extent * 0.85, *plan.zero_direction_arc_angle, arc_style);
+        const double zero_direction_arc_radius = extent * 0.85;
+        polarplot::draw_angle_arc(zero_direction_arc_radius, *plan.zero_direction_arc_angle,
+                                  arc_style);
+
+        // Short tick straddling the arc's start point (12 o'clock), marking
+        // it as the arc's reference point -- gated on the same condition as
+        // the arc itself, so it only ever appears while the arc does.
+        const polarplot::ZeroDirectionTick tick =
+            polarplot::zero_direction_arc_tick(zero_direction_arc_radius, extent);
+        const std::array<double, 2> tick_x{tick.inner.x, tick.outer.x};
+        const std::array<double, 2> tick_y{tick.inner.y, tick.outer.y};
+        const ImPlotSpec tick_spec{ImPlotProp_LineWeight, line_width_};
+        ImPlot::PlotLine("##zero_direction_tick", tick_x.data(), tick_y.data(), 2, tick_spec);
     }
     // Always drawn, right on the outer ring (as opposed to the zero-direction
     // arc's slightly inset radius above) and centered on the plot's

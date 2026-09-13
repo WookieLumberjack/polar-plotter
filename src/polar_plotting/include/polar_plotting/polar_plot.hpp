@@ -138,6 +138,26 @@ struct ArrowheadWings {
 /// coincide with \p head.
 [[nodiscard]] ArrowheadWings arrowhead_wing_points(Point tail, Point head, double head_frac);
 
+/// The two endpoints of the short radial tick mark drawn at the
+/// zero-direction arc's start point (12 o'clock / vertical axis), straddling
+/// the arc's own draw radius so it's visually clear that's the arc's
+/// reference point. See \ref zero_direction_arc_tick.
+struct ZeroDirectionTick {
+    Point inner;
+    Point outer;
+};
+
+/// Compute \ref ZeroDirectionTick's endpoints for an arc drawn at \p radius
+/// within a plot of \p extent: a short segment running straight up (the
+/// plot's own +y axis, i.e. `x = 0`) from `radius - 0.025 * extent` to
+/// `radius + 0.025 * extent`, straddling \p radius. \p radius is the caller's
+/// already-computed arc draw radius (e.g. `extent * 0.85`, the zero-direction
+/// arc's own draw radius) -- this function does not derive it. Degenerate
+/// input (\p extent == 0.0) collapses both endpoints to `(0, radius)` rather
+/// than producing a negative-length tick. Pure function -- the test seam for
+/// this geometry, alongside \ref arrowhead_wing_points.
+[[nodiscard]] ZeroDirectionTick zero_direction_arc_tick(double radius, double extent);
+
 /// One explicit tick on the vertical scale ruler (see \ref begin_vector_plot):
 /// \p position is the tick's value along the plot's y axis (i.e. a ring's
 /// radius) and \p label is its formatted text.
@@ -182,9 +202,19 @@ struct RulerTick {
 /// minor ticks between them (see \ref minor_ruler_ticks), computed from
 /// \p frame's \c ring_interval and \c ring_count -- callers must pass the
 /// same \p frame to \ref draw_polar_grid and \ref draw_rotation_indicator
-/// this frame so the ruler and the grid never disagree. Returns true when
-/// the plot is visible; call \ref end_vector_plot exactly once iff this
-/// returned true (mirrors ImPlot::BeginPlot).
+/// this frame so the ruler and the grid never disagree. Also configures the
+/// legend (\c ImPlot::SetupLegend) with \c ImPlotLegendFlags_NoButtons --
+/// visibility is controlled solely by the side panel's checkboxes, so legend
+/// click-to-hide is disabled entirely (#71; this also means A and B, which
+/// have no checkbox, can never be hidden) -- and
+/// \c ImPlotLegendFlags_NoHighlightAxis, suppressing ImPlot's default
+/// highlight-the-Y2-ruler-on-hover behavior. The hover-bold effect on a
+/// legend entry itself is kept, and extended to that vector's arrowhead (see
+/// \ref draw_arrow's \c plot_arrow_shape) and tip marker (see
+/// \ref draw_vector's \c draw_tip_marker) so shaft/arrowhead/marker bold
+/// together as one visual unit. Returns true when the plot is visible; call
+/// \ref end_vector_plot exactly once iff this returned true (mirrors
+/// ImPlot::BeginPlot).
 [[nodiscard]] bool begin_vector_plot(const char* title, PlotFrame frame);
 
 /// End a plot begun with \ref begin_vector_plot.
@@ -244,26 +274,33 @@ inline constexpr float kHeadLengthPixels = 14.0F;
 /// dividing by zero. Pure function -- the test seam for this conversion.
 [[nodiscard]] double head_frac_for_fixed_pixels(double head_length_px, double shaft_length_px);
 
-/// Draw an arrow (shaft + head) from \p tail to \p head, labelled \p label.
-/// \p tail and \p head are given in math convention and remapped via
-/// \p convention before drawing. The arrowhead is always \ref
-/// kHeadLengthPixels on screen (see \ref head_frac_for_fixed_pixels) --
-/// there is no per-call head-size override. \p thickness is the shaft/head
-/// line weight in pixels, applied to both. This is the bare drawing
-/// primitive -- it carries no tip marker or tip label; use \ref draw_vector
-/// for a named vector, which always gets both.
-void draw_arrow(const char* label, Point tail, Point head, AngleConvention convention,
-                float thickness = 2.0F);
-
 /// RGBA color override for a named vector's tip marker (components in
 /// [0, 1]). Kept as a plain struct -- rather than an ImGui/ImPlot type -- so
 /// this header doesn't need to include their headers, matching \ref ArcStyle.
+/// Also reused (see \ref draw_arrow / \ref draw_vector's \p line_color
+/// parameter) as the shaft/arrowhead color override.
 struct MarkerColor {
     float r{0.0F};
     float g{0.0F};
     float b{0.0F};
     float a{1.0F};
 };
+
+/// Draw an arrow (shaft + head) from \p tail to \p head, labelled \p label.
+/// \p tail and \p head are given in math convention and remapped via
+/// \p convention before drawing. The arrowhead is always \ref
+/// kHeadLengthPixels on screen (see \ref head_frac_for_fixed_pixels) --
+/// there is no per-call head-size override. \p thickness is the shaft/head
+/// line weight in pixels, applied to both. \p line_color, when non-null,
+/// overrides both the shaft's and the arrowhead's color in place of ImPlot's
+/// auto-cycled per-item color (see #70: the auto-cycle reassigns colors once
+/// a toggled-off item's legend entry is garbage-collected and later
+/// recreated); left null by every existing caller, so the default appearance
+/// (today's auto-cycle behavior) is unchanged. This is the bare drawing
+/// primitive -- it carries no tip marker or tip label; use \ref draw_vector
+/// for a named vector, which always gets both.
+void draw_arrow(const char* label, Point tail, Point head, AngleConvention convention,
+                float thickness = 2.0F, const MarkerColor* line_color = nullptr);
 
 /// The fixed, shared marker color used for a hovered tip (see #44/#47):
 /// applies identically to A or B, never per-vector-tinted, and is distinct
@@ -295,14 +332,22 @@ void draw_length_tick(double magnitude, MarkerColor color);
 /// \ref draw_arrow directly; \c polar_plotting has no notion of *why* a
 /// vector is named, only that this entry point always marks and labels it.
 /// \p thickness is the shaft/head line weight in pixels. \p marker_color, when
-/// non-null, overrides the tip marker's fill/line color (e.g. with
-/// \ref kHoverMarkerColor for a hover cue); it is left null by every existing
-/// caller, so the default appearance (today's fixed idle color) is unchanged.
-/// The override applies only to the tip marker -- the shaft, arrowhead, and
-/// tip label always keep their normal color.
+/// non-null, overrides both the tip marker's and tip label's fill/line color
+/// (e.g. with \ref kHoverMarkerColor for a hover cue, or a theme's text color
+/// as the idle default -- see #68/\c ui::App::draw_plot, which is now the
+/// only caller that decides the idle-state color; \c polar_plotting itself
+/// has no hardcoded default). When null, the marker keeps ImPlot's normal
+/// auto-cycled color and the label matches whatever color the shaft/head
+/// resolved to. The shaft/arrowhead's own color is never affected by this
+/// override. \p line_color, when non-null, is forwarded to \ref draw_arrow
+/// and overrides the shaft's and arrowhead's color instead (sibling to
+/// \p marker_color, but applied to the opposite part of the drawing -- see
+/// #70's fixed per-vector palette); null by default, preserving today's
+/// ImPlot auto-cycle behavior for the shaft and head.
 void draw_vector(const char* label, Point head, AngleConvention convention,
                  TipMarkerStyle marker_style, float thickness = 2.0F,
-                 const MarkerColor* marker_color = nullptr);
+                 const MarkerColor* marker_color = nullptr,
+                 const MarkerColor* line_color = nullptr);
 
 /// Which of A's or B's tip (if either) is the target of a hover/drag
 /// interaction this frame; \c kNone when neither is within hit range of the
@@ -414,11 +459,13 @@ struct InteractiveVectorResult {
 /// would replace the existing tip marker with its own plain circular marker.
 /// Must be called between \ref begin_vector_plot/\ref end_vector_plot, after
 /// \p is_hover_target for this frame is known. Draws the vector exactly like
-/// \ref draw_vector (arrow + tip marker + tip label), with the tip marker
-/// recolored to \ref kHoverMarkerColor or \ref kDraggingMarkerColor per the
-/// resolved \ref InteractionState (or left at its normal idle color), and
-/// returns the updated head position plus that state for the caller (e.g.
-/// \c ui::App) to store back into its own vector state.
+/// \ref draw_vector (arrow + tip marker + tip label), with the tip marker/
+/// label recolored to \ref kHoverMarkerColor or \ref kDraggingMarkerColor per
+/// the resolved \ref InteractionState, or to \p default_marker_color (when
+/// non-null) for any other state (idle, or released off-target) -- see #68,
+/// where \c ui::App::draw_plot passes the active theme's text color as this
+/// default. Returns the updated head position plus that state for the caller
+/// (e.g. \c ui::App) to store back into its own vector state.
 ///
 /// While dragging (#44/#49), the live mouse position is first clamped in
 /// pixel space to the plot canvas' own on-screen bounds (via
@@ -442,10 +489,22 @@ struct InteractiveVectorResult {
 /// \ref from_plotted_point, so it aligns with the grid as drawn regardless
 /// of \p convention. Magnitude/radius is never snapped. Releasing Shift
 /// mid-drag takes effect the very next frame.
+///
+/// \p default_marker_color, when non-null, is forwarded to the underlying
+/// \ref draw_vector call as its own \p marker_color override for any state
+/// other than hover/drag (idle, or released off-target) -- see #68, where
+/// \c ui::App::draw_plot passes the active theme's text color as this
+/// default. \p line_color, when non-null, is forwarded to the underlying
+/// \ref draw_vector call as its own \p line_color override, fixing A/B's
+/// shaft/arrowhead color independent of ImPlot's auto-cycle (see #70); null
+/// by default, preserving today's auto-cycle behavior. Neither parameter
+/// overrides the tip marker's hover/drag recoloring, which is applied
+/// separately per the resolved \ref InteractionState.
 [[nodiscard]] InteractiveVectorResult draw_interactive_vector(
     const char* label, Point head, AngleConvention convention, TipMarkerStyle marker_style,
     bool is_hover_target, bool was_dragging, float thickness = 2.0F, bool auto_scale = true,
-    double visible_extent = 0.0);
+    double visible_extent = 0.0, const MarkerColor* default_marker_color = nullptr,
+    const MarkerColor* line_color = nullptr);
 
 /// A free-vector annotation: an arrow beginning at an explicit \p start point
 /// (never assumed to originate at the origin) and displaced by \p vector.
@@ -503,6 +562,28 @@ struct RotationIndicatorArc {
 };
 [[nodiscard]] RotationIndicatorArc rotation_indicator_arc(double sweep_sign);
 
+/// One rotation-direction indicator label: \p position is where it should be
+/// drawn (in the plot's own raw/unconverted coordinate frame -- see below)
+/// and \p text is always the fixed abbreviation `"Rot."` (never the full
+/// "Rotation Direction" -- there is no dynamic width-based switching between
+/// forms).
+struct RotationIndicatorLabel {
+    Point position;
+    std::string text;
+};
+
+/// Compute the rotation-direction indicator's `"Rot."` label: positioned at
+/// radius `extent * kLabelRadiusFactor` (the same radius \ref spoke_labels
+/// uses, just outside the outer ring), angularly centered on
+/// \ref rotation_indicator_arc's sweep midpoint (`(from_angle + to_angle) /
+/// 2`) for \p sweep_sign. Like \ref rotation_indicator_arc itself, the
+/// position is in the plot's raw coordinate frame and is never remapped by
+/// an \ref AngleConvention -- \c polar_plotting keeps the rotation indicator
+/// (arc and label alike) entirely outside the app's angle convention (see
+/// docs/adr/0001-polar-plotting-receives-only-composed-angle-sign.md). Pure
+/// function -- the test seam for this geometry.
+[[nodiscard]] RotationIndicatorLabel rotation_indicator_label(double extent, double sweep_sign);
+
 /// Draw a short curved-arrow arc of radius \p frame's \c extent on the outer
 /// ring, indicating a rotation direction: \p sweep_sign > 0 curves
 /// counterclockwise, < 0 clockwise (only the sign is used -- see
@@ -513,7 +594,10 @@ struct RotationIndicatorArc {
 /// centered on the plot's right/3-o'clock reference direction rather than
 /// growing from straight up. A pure "draw this now" primitive, like
 /// \ref draw_angle_arc -- callers decide when to call it each frame. Pass the
-/// same \p frame given to \ref begin_vector_plot this frame.
+/// same \p frame given to \ref begin_vector_plot this frame. Also draws the
+/// fixed \ref rotation_indicator_label "Rot." label (see \ref
+/// rotation_indicator_label) in \p style's color, so the indicator and its
+/// label always share one call and can never fall out of sync.
 void draw_rotation_indicator(PlotFrame frame, double sweep_sign, ArcStyle style = {});
 
 }  // namespace polarplot
