@@ -654,10 +654,23 @@ RotationIndicatorArc rotation_indicator_arc(double sweep_sign) {
     return {.from_angle = kRightAngle, .to_angle = kRightAngle + (sign * kRotationIndicatorSweep)};
 }
 
+RotationIndicatorLabel rotation_indicator_label(double extent, double sweep_sign) {
+    const RotationIndicatorArc arc = rotation_indicator_arc(sweep_sign);
+    const double mid_angle = (arc.from_angle + arc.to_angle) / 2.0;
+    const double label_radius = extent * kLabelRadiusFactor;
+    const Point position{label_radius * std::cos(mid_angle), label_radius * std::sin(mid_angle)};
+    return {position, "Rot."};
+}
+
 void draw_rotation_indicator(PlotFrame frame, double sweep_sign, ArcStyle style) {
     const RotationIndicatorArc arc = rotation_indicator_arc(sweep_sign);
     draw_arc_with_head(frame.extent(), arc.from_angle, arc.to_angle, style, "##rotation_indicator",
                        "##rotation_indicator_head");
+
+    const RotationIndicatorLabel label = rotation_indicator_label(frame.extent(), sweep_sign);
+    const ImVec4 color{style.r, style.g, style.b, style.a};
+    ImPlot::Annotation(label.position.x, label.position.y, color, ImVec2(0.0F, 0.0F), false, "%s",
+                       label.text.c_str());
 }
 
 }  // namespace polarplot

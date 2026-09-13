@@ -523,6 +523,28 @@ struct RotationIndicatorArc {
 };
 [[nodiscard]] RotationIndicatorArc rotation_indicator_arc(double sweep_sign);
 
+/// One rotation-direction indicator label: \p position is where it should be
+/// drawn (in the plot's own raw/unconverted coordinate frame -- see below)
+/// and \p text is always the fixed abbreviation `"Rot."` (never the full
+/// "Rotation Direction" -- there is no dynamic width-based switching between
+/// forms).
+struct RotationIndicatorLabel {
+    Point position;
+    std::string text;
+};
+
+/// Compute the rotation-direction indicator's `"Rot."` label: positioned at
+/// radius `extent * kLabelRadiusFactor` (the same radius \ref spoke_labels
+/// uses, just outside the outer ring), angularly centered on
+/// \ref rotation_indicator_arc's sweep midpoint (`(from_angle + to_angle) /
+/// 2`) for \p sweep_sign. Like \ref rotation_indicator_arc itself, the
+/// position is in the plot's raw coordinate frame and is never remapped by
+/// an \ref AngleConvention -- \c polar_plotting keeps the rotation indicator
+/// (arc and label alike) entirely outside the app's angle convention (see
+/// docs/adr/0001-polar-plotting-receives-only-composed-angle-sign.md). Pure
+/// function -- the test seam for this geometry.
+[[nodiscard]] RotationIndicatorLabel rotation_indicator_label(double extent, double sweep_sign);
+
 /// Draw a short curved-arrow arc of radius \p frame's \c extent on the outer
 /// ring, indicating a rotation direction: \p sweep_sign > 0 curves
 /// counterclockwise, < 0 clockwise (only the sign is used -- see
@@ -533,7 +555,10 @@ struct RotationIndicatorArc {
 /// centered on the plot's right/3-o'clock reference direction rather than
 /// growing from straight up. A pure "draw this now" primitive, like
 /// \ref draw_angle_arc -- callers decide when to call it each frame. Pass the
-/// same \p frame given to \ref begin_vector_plot this frame.
+/// same \p frame given to \ref begin_vector_plot this frame. Also draws the
+/// fixed \ref rotation_indicator_label "Rot." label (see \ref
+/// rotation_indicator_label) in \p style's color, so the indicator and its
+/// label always share one call and can never fall out of sync.
 void draw_rotation_indicator(PlotFrame frame, double sweep_sign, ArcStyle style = {});
 
 }  // namespace polarplot

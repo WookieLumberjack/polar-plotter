@@ -361,6 +361,47 @@ TEST_CASE(
     }
 }
 
+TEST_CASE(
+    "rotation_indicator_label is angularly centered on the arc's sweep midpoint with a fixed "
+    "\"Rot.\" text",
+    "[polar_plot][rotation_indicator]") {
+    constexpr double kExtent = 5.0;
+    constexpr double kExpectedRadius = kExtent * kLabelRadiusFactor;
+
+    SECTION("counterclockwise sweep") {
+        const polarplot::RotationIndicatorLabel label =
+            polarplot::rotation_indicator_label(kExtent, 1.0);
+        CHECK(label.text == "Rot.");
+
+        const polarplot::RotationIndicatorArc arc = polarplot::rotation_indicator_arc(1.0);
+        const double mid_angle = (arc.from_angle + arc.to_angle) / 2.0;
+        REQUIRE_THAT(label.position.x, WithinAbs(kExpectedRadius * std::cos(mid_angle), 1e-9));
+        REQUIRE_THAT(label.position.y, WithinAbs(kExpectedRadius * std::sin(mid_angle), 1e-9));
+    }
+
+    SECTION("clockwise sweep") {
+        const polarplot::RotationIndicatorLabel label =
+            polarplot::rotation_indicator_label(kExtent, -1.0);
+        CHECK(label.text == "Rot.");
+
+        const polarplot::RotationIndicatorArc arc = polarplot::rotation_indicator_arc(-1.0);
+        const double mid_angle = (arc.from_angle + arc.to_angle) / 2.0;
+        REQUIRE_THAT(label.position.x, WithinAbs(kExpectedRadius * std::cos(mid_angle), 1e-9));
+        REQUIRE_THAT(label.position.y, WithinAbs(kExpectedRadius * std::sin(mid_angle), 1e-9));
+    }
+
+    SECTION("only sweep_sign's sign matters, matching rotation_indicator_arc") {
+        const polarplot::RotationIndicatorLabel small =
+            polarplot::rotation_indicator_label(kExtent, 0.001);
+        const polarplot::RotationIndicatorLabel large =
+            polarplot::rotation_indicator_label(kExtent, 1000.0);
+        REQUIRE_THAT(small.position.x, WithinAbs(large.position.x, 1e-9));
+        REQUIRE_THAT(small.position.y, WithinAbs(large.position.y, 1e-9));
+        CHECK(small.text == "Rot.");
+        CHECK(large.text == "Rot.");
+    }
+}
+
 TEST_CASE("ruler_ticks respects a custom ring_count", "[polar_plot][ruler_ticks]") {
     const std::vector<polarplot::RulerTick> ticks = polarplot::ruler_ticks(0.5, 2);
 
