@@ -1,6 +1,7 @@
 #ifndef UI_THEME_HPP
 #define UI_THEME_HPP
 
+#include <array>
 #include <cstdint>
 
 namespace ui {
@@ -10,6 +11,14 @@ namespace ui {
 /// dark with the same sharp/default corner rounding, while kPaper/kNordLight/
 /// kMint are light with noticeably larger rounding for a more modern look.
 enum class Theme : std::uint8_t { kSlate, kMidnight, kPaper, kNordLight, kMint };
+
+/// Every Theme value, in declaration order. The single source of truth for
+/// "all themes" -- callers that need to enumerate them (the Theme menu,
+/// serialization round-trip tests, ...) iterate this instead of each keeping
+/// their own copy of the value list, so adding a theme only means adding it
+/// here plus the per-theme switches (theme_style/theme_label/theme_name).
+inline constexpr std::array<Theme, 5> kAllThemes{Theme::kSlate, Theme::kMidnight, Theme::kPaper,
+                                                 Theme::kNordLight, Theme::kMint};
 
 /// One RGBA color, componentwise, in the [0, 1] range ImGui colors use.
 /// Kept as plain floats (rather than ImGui's ImVec4) so ThemeStyle stays

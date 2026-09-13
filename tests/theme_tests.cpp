@@ -5,16 +5,10 @@
 
 #include "ui/theme.hpp"
 
+using ui::kAllThemes;
 using ui::Theme;
 using ui::theme_style;
 using ui::ThemeStyle;
-
-namespace {
-
-constexpr std::array<Theme, 5> kAllThemes{Theme::kSlate, Theme::kMidnight, Theme::kPaper,
-                                          Theme::kNordLight, Theme::kMint};
-
-}  // namespace
 
 TEST_CASE("theme_style returns a distinct style for every Theme value", "[theme]") {
     for (std::size_t i = 0; i < kAllThemes.size(); ++i) {

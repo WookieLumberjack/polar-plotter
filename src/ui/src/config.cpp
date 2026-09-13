@@ -58,21 +58,15 @@ std::string_view theme_name(Theme theme) {
     return "slate";
 }
 
+// Derived from kAllThemes/theme_name rather than its own independent
+// if-chain, so a theme added to kAllThemes without a matching entry here
+// fails loudly (round-trip test breaks) instead of silently parsing as
+// std::nullopt (falls back to default) forever.
 std::optional<Theme> parse_theme(std::string_view value) {
-    if (value == "slate") {
-        return Theme::kSlate;
-    }
-    if (value == "midnight") {
-        return Theme::kMidnight;
-    }
-    if (value == "paper") {
-        return Theme::kPaper;
-    }
-    if (value == "nord_light") {
-        return Theme::kNordLight;
-    }
-    if (value == "mint") {
-        return Theme::kMint;
+    for (const Theme candidate : kAllThemes) {
+        if (theme_name(candidate) == value) {
+            return candidate;
+        }
     }
     return std::nullopt;
 }

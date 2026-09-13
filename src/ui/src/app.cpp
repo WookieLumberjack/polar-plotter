@@ -281,9 +281,7 @@ void App::draw_menu_bar() {
         ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("Theme")) {
-        constexpr std::array<Theme, 5> kThemes{Theme::kSlate, Theme::kMidnight, Theme::kPaper,
-                                               Theme::kNordLight, Theme::kMint};
-        for (const Theme candidate : kThemes) {
+        for (const Theme candidate : kAllThemes) {
             const bool selected = candidate == theme_;
             if (ImGui::MenuItem(theme_label(candidate), nullptr, selected) && !selected) {
                 theme_ = candidate;
