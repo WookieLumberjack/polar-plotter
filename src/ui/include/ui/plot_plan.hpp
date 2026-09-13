@@ -84,68 +84,16 @@ inline constexpr int kAutoFitRings = 4;
 /// disagree regardless of mode. Pure -- no ImGui/ImPlot dependency.
 [[nodiscard]] polarplot::PlotFrame manual_extent(double ring_interval);
 
-/// A closed description of everything on-plot this frame. draw_plot() loops
-/// over this and issues the matching polarplot:: draw calls -- no toggle
-/// logic of its own left over.
-struct PlotPlan {
-    polarplot::Point a;
-    polarplot::Point b;
-    std::optional<polarplot::Point> sum;
-    std::optional<polarplot::Point> difference;
-    // Plain-arrow derived vectors, present iff their show_* toggle is on --
-    // for the quotients, also iff the divisor's magnitude is nonzero (see
-    // vecmath::complex_divide).
-    std::optional<polarplot::Point> difference_ba;
-    std::optional<polarplot::Point> product;
-    std::optional<polarplot::Point> quotient_ab;
-    std::optional<polarplot::Point> quotient_ba;
-
-    /// One entry per non-interactive derived vector currently shown -- a
-    /// list-shaped view over the same values already computed for
-    /// difference/sum/difference_ba/product/quotient_ab/quotient_ba above (no
-    /// new computation). A and B are excluded: they go through
-    /// draw_interactive_vector, a structurally different draw path.
-    struct DerivedVector {
-        const char* label{nullptr};
-        polarplot::Point point;
-    };
-    // Push order is part of PlotPlan's contract, mirroring
-    // tip_to_tail_annotations' contract above: when present, entries appear
-    // in this fixed order regardless of which toggles produced them --
-    // difference, sum, difference_ba, product, quotient_ab, quotient_ba --
-    // matching App::draw_plot's on-screen draw/legend order, not plan_plot's
-    // internal computation order (which differs).
-    std::vector<DerivedVector> derived_vectors;
-
-    // 0-4 entries depending on which toggles are on: A - B's tip-to-tail
-    // annotation (if show_difference && show_tip_to_tail), then B - A's (if
-    // show_difference_ba && show_tip_to_tail), then the sum's two (if
-    // show_sum && show_tip_to_tail) -- see plan_plot's push-order comment.
-    std::vector<polarplot::AnnotationVector> tip_to_tail_annotations;
-    std::optional<polarplot::AnnotationVector> difference_segment;
-    // The B - A counterpart to difference_segment above: the free vector
-    // from A's tip to B's tip, present iff show_difference_ba &&
-    // show_difference_segment. Both can be present simultaneously when both
-    // difference directions are shown.
-    std::optional<polarplot::AnnotationVector> difference_segment_ba;
-    // Present iff the arc should be drawn this frame (transient-focused OR
-    // persistent-toggle), holding the angle to draw it at.
-    std::optional<double> zero_direction_arc_angle;
-    // Composed once from PlotInputs' angle-convention fields, needed by the
-    // caller to draw everything above.
-    polarplot::AngleConvention convention;
-    // Plain sweep sign for the rotation-direction indicator (see
-    // ui::rotation_sweep_sign): +1 counterclockwise, -1 clockwise. Derived
-    // from PlotInputs::rotation_direction alone, independent of
-    // measurement_convention -- never the RotationDirection enum itself (see
-    // docs/adr/0001-polar-plotting-receives-only-composed-angle-sign.md).
-    double rotation_indicator_sweep_sign{1.0};
-    // See auto_fit_extent -- the same values must drive both draw_polar_grid
-    // and the plot's axis limits so they never disagree. Default matches
-    // auto_fit_extent's degenerate-input fallback; plan_plot always
-    // overwrites this before returning.
-    polarplot::PlotFrame extent{1.0, kAutoFitRings};
-};
+/// \c PlotPlan itself is defined in \c polar_plotting (\c polarplot::PlotPlan)
+/// rather than here, purely so \c polarplot::draw_scene can take one by const
+/// reference without \c polar_plotting depending on \c ui (see CLAUDE.md's
+/// module table) -- every field it needs is already expressed in
+/// \c polar_plotting's own vocabulary. This alias keeps \c ui::PlotPlan as
+/// the name every \c ui caller (and \c tests/plot_plan_tests.cpp) already
+/// uses. \c plan_plot() still owns all the toggle logic that decides one:
+/// draw_plot() loops over the result and issues the matching polarplot::
+/// draw calls -- no toggle logic of its own left over.
+using PlotPlan = polarplot::PlotPlan;
 
 /// Decide this frame's PlotPlan from \p inputs. Pure -- internally calls into
 /// ui::construction's tip_to_tail_sum/tip_to_tail_difference/
