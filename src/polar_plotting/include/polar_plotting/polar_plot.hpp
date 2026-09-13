@@ -443,6 +443,23 @@ struct PixelRect {
 /// check. Pure function -- the test seam for this predicate.
 [[nodiscard]] bool point_in_rect(Point p, PixelRect rect);
 
+/// Pure decision logic behind \ref draw_interactive_vector's dragging branch
+/// (#49/#50/#82): given \p plotted (a candidate drag position, already in
+/// plotted/visual space, i.e. after \ref to_plotted_point's remap -- see
+/// \ref snap_angle_to_increment), composes, in this fixed order: first, when
+/// \p shift_snap is set, \ref snap_angle_to_increment at the fixed 15 degree
+/// increment (#50); then, when \p auto_scale is false, \ref clamp_to_extent
+/// against \p visible_extent (#49) -- \p visible_extent is ignored when
+/// \p auto_scale is true. Snap runs *before* the clamp so that a snap which
+/// would rotate the point back outside \p visible_extent is itself caught by
+/// the clamp, rather than the clamp's own inward move being undone by a
+/// later snap -- the ordering that originally motivated #44/#49. Pure
+/// function, independent of ImGui/ImPlot -- the test seam for this
+/// composition, matching the \c resolve_* convention already used by
+/// \ref resolve_interaction_state.
+[[nodiscard]] Point resolve_drag_target(Point plotted, bool shift_snap, bool auto_scale,
+                                        double visible_extent);
+
 /// Result of \ref draw_interactive_vector: \p head is the vector's head this
 /// frame, in the same math-convention space \ref draw_vector's \p head
 /// parameter takes (updated live while dragging via \ref from_plotted_point;
