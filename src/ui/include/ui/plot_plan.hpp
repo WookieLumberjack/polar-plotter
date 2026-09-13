@@ -99,6 +99,24 @@ struct PlotPlan {
     std::optional<polarplot::Point> product;
     std::optional<polarplot::Point> quotient_ab;
     std::optional<polarplot::Point> quotient_ba;
+
+    /// One entry per non-interactive derived vector currently shown -- a
+    /// list-shaped view over the same values already computed for
+    /// difference/sum/difference_ba/product/quotient_ab/quotient_ba above (no
+    /// new computation). A and B are excluded: they go through
+    /// draw_interactive_vector, a structurally different draw path.
+    struct DerivedVector {
+        const char* label{nullptr};
+        polarplot::Point point;
+    };
+    // Push order is part of PlotPlan's contract, mirroring
+    // tip_to_tail_annotations' contract above: when present, entries appear
+    // in this fixed order regardless of which toggles produced them --
+    // difference, sum, difference_ba, product, quotient_ab, quotient_ba --
+    // matching App::draw_plot's on-screen draw/legend order, not plan_plot's
+    // internal computation order (which differs).
+    std::vector<DerivedVector> derived_vectors;
+
     // 0-4 entries depending on which toggles are on: A - B's tip-to-tail
     // annotation (if show_difference && show_tip_to_tail), then B - A's (if
     // show_difference_ba && show_tip_to_tail), then the sum's two (if
