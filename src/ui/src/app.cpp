@@ -74,6 +74,14 @@ polarplot::MarkerColor to_marker_color(const ImVec4& color) {
     return {color.x, color.y, color.z, color.w};
 }
 
+// Convert a ThemeStyle's text color to a polarplot::MarkerColor, for use as
+// the default (idle-state) tip marker/label color override -- see #68: this
+// replaces polar_plotting's old hardcoded near-white default, so tip
+// markers/labels stay visible against light themes too.
+polarplot::MarkerColor to_marker_color(const ThemeColor& color) {
+    return {color.r, color.g, color.b, color.a};
+}
+
 // Draw a length tick for a just-drawn vector: magnitude is always
 // std::hypot(x, y) of \p head's math-convention components -- never its
 // plotted y-coordinate -- and color is read off whatever item ImPlot last
@@ -496,6 +504,12 @@ void App::draw_plot() {
     }
     polarplot::draw_polar_grid(view_frame, plan.convention);
 
+    // Theme-aware default tip marker/label color (#68): applies to every
+    // named vector's tip marker/label whenever no hover/drag override takes
+    // precedence, so markers stay visible against light themes instead of
+    // polar_plotting's old hardcoded near-white default.
+    const polarplot::MarkerColor tip_marker_color = to_marker_color(theme_style(theme_).text);
+
     // Hover/click-drag for A/B (see #44/#47/#48): whichever tip is under the
     // cursor is this frame's hit-test target; draw_interactive_vector turns
     // that plus each vector's own carried-over dragging state into this
@@ -510,11 +524,11 @@ void App::draw_plot() {
     // auto_scale_ is true.
     const polarplot::InteractiveVectorResult a_result = polarplot::draw_interactive_vector(
         "A", plan.a, plan.convention, marker_style_, hovered == polarplot::HoverTarget::kA,
-        a_.dragging_, line_width_, auto_scale_, extent);
+        a_.dragging_, line_width_, auto_scale_, extent, &tip_marker_color);
     draw_length_tick_for(a_result.head);
     const polarplot::InteractiveVectorResult b_result = polarplot::draw_interactive_vector(
         "B", plan.b, plan.convention, marker_style_, hovered == polarplot::HoverTarget::kB,
-        b_.dragging_, line_width_, auto_scale_, extent);
+        b_.dragging_, line_width_, auto_scale_, extent, &tip_marker_color);
     draw_length_tick_for(b_result.head);
     // Live drag tooltip (#44/#51): only while actively dragging, not during a
     // plain pre-drag hover -- disappears the instant the drag ends, since a
@@ -529,30 +543,32 @@ void App::draw_plot() {
     apply_interactive_result(b_, b_result);
     if (plan.difference) {
         polarplot::draw_vector("A - B", *plan.difference, plan.convention, marker_style_,
-                               line_width_);
+                               line_width_, &tip_marker_color);
         draw_length_tick_for(*plan.difference);
     }
     if (plan.sum) {
-        polarplot::draw_vector("A + B", *plan.sum, plan.convention, marker_style_, line_width_);
+        polarplot::draw_vector("A + B", *plan.sum, plan.convention, marker_style_, line_width_,
+                               &tip_marker_color);
         draw_length_tick_for(*plan.sum);
     }
     if (plan.difference_ba) {
         polarplot::draw_vector("B - A", *plan.difference_ba, plan.convention, marker_style_,
-                               line_width_);
+                               line_width_, &tip_marker_color);
         draw_length_tick_for(*plan.difference_ba);
     }
     if (plan.product) {
-        polarplot::draw_vector("A x B", *plan.product, plan.convention, marker_style_, line_width_);
+        polarplot::draw_vector("A x B", *plan.product, plan.convention, marker_style_, line_width_,
+                               &tip_marker_color);
         draw_length_tick_for(*plan.product);
     }
     if (plan.quotient_ab) {
         polarplot::draw_vector("A / B", *plan.quotient_ab, plan.convention, marker_style_,
-                               line_width_);
+                               line_width_, &tip_marker_color);
         draw_length_tick_for(*plan.quotient_ab);
     }
     if (plan.quotient_ba) {
         polarplot::draw_vector("B / A", *plan.quotient_ba, plan.convention, marker_style_,
-                               line_width_);
+                               line_width_, &tip_marker_color);
         draw_length_tick_for(*plan.quotient_ba);
     }
     // Positional ids: fine because draw_annotation_vector's id is never shown

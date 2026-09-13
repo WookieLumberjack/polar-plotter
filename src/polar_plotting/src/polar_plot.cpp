@@ -371,24 +371,31 @@ namespace {
 // implementation time per the spec.
 constexpr float kMarkerSize = 6.0F;
 constexpr ImVec2 kLabelPixelOffset{8.0F, -8.0F};
-constexpr ImVec4 kTipColor{0.9F, 0.9F, 0.9F, 1.0F};
 
 void draw_tip_marker(const char* label, Point tip, TipMarkerStyle marker_style,
                      const MarkerColor* marker_color) {
     const std::string id = std::string("##tip_") + label;
     const ImPlotMarker marker =
         (marker_style == TipMarkerStyle::kCrossHair) ? ImPlotMarker_Cross : ImPlotMarker_Circle;
-    const ImVec4 color = (marker_color != nullptr) ? ImVec4(marker_color->r, marker_color->g,
-                                                            marker_color->b, marker_color->a)
-                                                   : kTipColor;
-    const ImPlotSpec spec{
-        ImPlotProp_Marker,          marker, ImPlotProp_MarkerSize,      kMarkerSize,
-        ImPlotProp_MarkerFillColor, color,  ImPlotProp_MarkerLineColor, color};
+    ImPlotSpec spec{ImPlotProp_Marker, marker, ImPlotProp_MarkerSize, kMarkerSize};
+    if (marker_color != nullptr) {
+        const ImVec4 color(marker_color->r, marker_color->g, marker_color->b, marker_color->a);
+        spec.MarkerFillColor = color;
+        spec.MarkerLineColor = color;
+    }
     ImPlot::PlotScatter(id.c_str(), &tip.x, &tip.y, 1, spec);
 }
 
-void draw_tip_label(const char* label, Point tip) {
-    ImPlot::Annotation(tip.x, tip.y, kTipColor, kLabelPixelOffset, false, "%s", label);
+// \p marker_color, when non-null, colors the label the same as the tip
+// marker/shaft (theme-text default or the hover/drag override -- see \ref
+// draw_vector). When null, falls back to whatever ImPlot resolved for the
+// item drawn immediately before this call (the arrow head, via
+// ImPlot::GetLastItemColor()) rather than any color hardcoded here.
+void draw_tip_label(const char* label, Point tip, const MarkerColor* marker_color) {
+    const ImVec4 color = (marker_color != nullptr) ? ImVec4(marker_color->r, marker_color->g,
+                                                            marker_color->b, marker_color->a)
+                                                   : ImPlot::GetLastItemColor();
+    ImPlot::Annotation(tip.x, tip.y, color, kLabelPixelOffset, false, "%s", label);
 }
 
 }  // namespace
@@ -403,7 +410,7 @@ void draw_vector(const char* label, Point head, AngleConvention convention,
 
     draw_arrow(label, Point{0.0, 0.0}, head, convention, thickness);
 
-    draw_tip_label(label, tip);
+    draw_tip_label(label, tip, marker_color);
 }
 
 void draw_length_tick(double magnitude, MarkerColor color) {
@@ -509,7 +516,8 @@ InteractiveVectorResult draw_interactive_vector(const char* label, Point head,
                                                 AngleConvention convention,
                                                 TipMarkerStyle marker_style, bool is_hover_target,
                                                 bool was_dragging, float thickness, bool auto_scale,
-                                                double visible_extent) {
+                                                double visible_extent,
+                                                const MarkerColor* default_marker_color) {
     constexpr ImGuiMouseButton kDragButton = ImGuiMouseButton_Left;
     const bool mouse_down = ImGui::IsMouseDown(kDragButton);
     const bool mouse_pressed = ImGui::IsMouseClicked(kDragButton);
@@ -555,7 +563,7 @@ InteractiveVectorResult draw_interactive_vector(const char* label, Point head,
         updated_head = from_plotted_point(plotted, convention);
     }
 
-    const MarkerColor* marker_color = nullptr;
+    const MarkerColor* marker_color = default_marker_color;
     if (state == InteractionState::kDragging) {
         marker_color = &kDraggingMarkerColor;
     } else if (state == InteractionState::kHovered ||

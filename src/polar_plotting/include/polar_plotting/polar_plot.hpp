@@ -315,11 +315,14 @@ void draw_length_tick(double magnitude, MarkerColor color);
 /// \ref draw_arrow directly; \c polar_plotting has no notion of *why* a
 /// vector is named, only that this entry point always marks and labels it.
 /// \p thickness is the shaft/head line weight in pixels. \p marker_color, when
-/// non-null, overrides the tip marker's fill/line color (e.g. with
-/// \ref kHoverMarkerColor for a hover cue); it is left null by every existing
-/// caller, so the default appearance (today's fixed idle color) is unchanged.
-/// The override applies only to the tip marker -- the shaft, arrowhead, and
-/// tip label always keep their normal color.
+/// non-null, overrides both the tip marker's and tip label's fill/line color
+/// (e.g. with \ref kHoverMarkerColor for a hover cue, or a theme's text color
+/// as the idle default -- see #68/\c ui::App::draw_plot, which is now the
+/// only caller that decides the idle-state color; \c polar_plotting itself
+/// has no hardcoded default). When null, the marker keeps ImPlot's normal
+/// auto-cycled color and the label matches whatever color the shaft/head
+/// resolved to. The shaft/arrowhead's own color is never affected by this
+/// override.
 void draw_vector(const char* label, Point head, AngleConvention convention,
                  TipMarkerStyle marker_style, float thickness = 2.0F,
                  const MarkerColor* marker_color = nullptr);
@@ -434,11 +437,13 @@ struct InteractiveVectorResult {
 /// would replace the existing tip marker with its own plain circular marker.
 /// Must be called between \ref begin_vector_plot/\ref end_vector_plot, after
 /// \p is_hover_target for this frame is known. Draws the vector exactly like
-/// \ref draw_vector (arrow + tip marker + tip label), with the tip marker
-/// recolored to \ref kHoverMarkerColor or \ref kDraggingMarkerColor per the
-/// resolved \ref InteractionState (or left at its normal idle color), and
-/// returns the updated head position plus that state for the caller (e.g.
-/// \c ui::App) to store back into its own vector state.
+/// \ref draw_vector (arrow + tip marker + tip label), with the tip marker/
+/// label recolored to \ref kHoverMarkerColor or \ref kDraggingMarkerColor per
+/// the resolved \ref InteractionState, or to \p default_marker_color (when
+/// non-null) for any other state (idle, or released off-target) -- see #68,
+/// where \c ui::App::draw_plot passes the active theme's text color as this
+/// default. Returns the updated head position plus that state for the caller
+/// (e.g. \c ui::App) to store back into its own vector state.
 ///
 /// While dragging (#44/#49), the live mouse position is first clamped in
 /// pixel space to the plot canvas' own on-screen bounds (via
@@ -465,7 +470,7 @@ struct InteractiveVectorResult {
 [[nodiscard]] InteractiveVectorResult draw_interactive_vector(
     const char* label, Point head, AngleConvention convention, TipMarkerStyle marker_style,
     bool is_hover_target, bool was_dragging, float thickness = 2.0F, bool auto_scale = true,
-    double visible_extent = 0.0);
+    double visible_extent = 0.0, const MarkerColor* default_marker_color = nullptr);
 
 /// A free-vector annotation: an arrow beginning at an explicit \p start point
 /// (never assumed to originate at the origin) and displaced by \p vector.
