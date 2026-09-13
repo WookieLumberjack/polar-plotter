@@ -273,6 +273,56 @@ TEST_CASE("auto_fit_extent only folds in magnitudes of vectors currently shown",
         CHECK_THAT(extent.ring_interval(), WithinRel(5.0));
         CHECK_THAT(extent.extent(), WithinRel(20.0));
     }
+
+    SECTION("B - A shown grows the extent to cover it when it's the largest vector") {
+        const PlotFrame extent = ui::auto_fit_extent(
+            PlotInputs{.a = {5.0, 0.0}, .b = {-5.0, 0.0}, .show_difference_ba = true});
+        // B - A = (-10, 0), magnitude 10, target 12, desired 3 => snaps to 5.
+        CHECK_THAT(extent.ring_interval(), WithinRel(5.0));
+        CHECK_THAT(extent.extent(), WithinRel(20.0));
+    }
+
+    SECTION("A x B (product) shown grows the extent to cover it when it's the largest vector") {
+        const PlotFrame extent =
+            ui::auto_fit_extent(PlotInputs{.a = {3.0, 0.0}, .b = {0.0, 4.0}, .show_product = true});
+        // product magnitude = |a| * |b| = 12, target 14.4, desired 3.6 => snaps to 5.
+        CHECK_THAT(extent.ring_interval(), WithinRel(5.0));
+        CHECK_THAT(extent.extent(), WithinRel(20.0));
+    }
+
+    SECTION("A x B (product) hidden: its magnitude does not affect the extent") {
+        const PlotFrame extent = ui::auto_fit_extent(
+            PlotInputs{.a = {3.0, 0.0}, .b = {0.0, 4.0}, .show_product = false});
+        // Ignoring the (hidden) product's magnitude of 12, only A/B (magnitude
+        // 4) count: target 4.8, desired 1.2 => snaps to 2.
+        CHECK_THAT(extent.ring_interval(), WithinRel(2.0));
+        CHECK_THAT(extent.extent(), WithinRel(8.0));
+    }
+
+    SECTION("A / B (quotient) shown grows the extent to cover it when it's the largest vector") {
+        const PlotFrame extent = ui::auto_fit_extent(
+            PlotInputs{.a = {2.0, 0.0}, .b = {0.0, 0.5}, .show_quotient_ab = true});
+        // quotient magnitude = |a| / |b| = 4, target 4.8, desired 1.2 => snaps to 2.
+        CHECK_THAT(extent.ring_interval(), WithinRel(2.0));
+        CHECK_THAT(extent.extent(), WithinRel(8.0));
+    }
+
+    SECTION("B / A (quotient) shown grows the extent to cover it when it's the largest vector") {
+        const PlotFrame extent = ui::auto_fit_extent(
+            PlotInputs{.a = {0.0, 0.5}, .b = {2.0, 0.0}, .show_quotient_ba = true});
+        // quotient magnitude = |b| / |a| = 4, target 4.8, desired 1.2 => snaps to 2.
+        CHECK_THAT(extent.ring_interval(), WithinRel(2.0));
+        CHECK_THAT(extent.extent(), WithinRel(8.0));
+    }
+
+    SECTION("a quotient with a zero divisor (undefined) is excluded rather than crashing") {
+        const PlotFrame extent = ui::auto_fit_extent(
+            PlotInputs{.a = {3.0, 0.0}, .b = {0.0, 0.0}, .show_quotient_ab = true});
+        // A / B is undefined (B is zero); falls back to A alone, magnitude 3,
+        // target 3.6, desired 0.9 => snaps to 1.
+        CHECK_THAT(extent.ring_interval(), WithinRel(1.0));
+        CHECK_THAT(extent.extent(), WithinRel(4.0));
+    }
 }
 
 TEST_CASE("auto_fit_extent edge cases: zero, very small, and very large vectors", "[plot_plan]") {

@@ -62,6 +62,23 @@ polarplot::PlotFrame auto_fit_extent(const PlotInputs& inputs) {
     if (inputs.show_difference) {
         max_magnitude = std::max(max_magnitude, vecmath::magnitude(inputs.a - inputs.b));
     }
+    if (inputs.show_difference_ba) {
+        max_magnitude = std::max(max_magnitude, vecmath::magnitude(inputs.b - inputs.a));
+    }
+    if (inputs.show_product) {
+        max_magnitude = std::max(max_magnitude,
+                                 vecmath::magnitude(vecmath::complex_multiply(inputs.a, inputs.b)));
+    }
+    if (inputs.show_quotient_ab) {
+        if (const auto quotient = vecmath::complex_divide(inputs.a, inputs.b)) {
+            max_magnitude = std::max(max_magnitude, vecmath::magnitude(*quotient));
+        }
+    }
+    if (inputs.show_quotient_ba) {
+        if (const auto quotient = vecmath::complex_divide(inputs.b, inputs.a)) {
+            max_magnitude = std::max(max_magnitude, vecmath::magnitude(*quotient));
+        }
+    }
 
     if (max_magnitude <= 0.0) {
         return {kAutoFitDefaultInterval, kAutoFitRings};
