@@ -424,15 +424,7 @@ void App::draw_controls() {
                            ImGuiSliderFlags_Logarithmic);
     }
 
-    const vecmath::Polar pa = vecmath::to_polar(a);
-    const vecmath::Polar pb = vecmath::to_polar(b);
-
     ImGui::SeparatorText("Derived quantities");
-    ImGui::Text("|A| = %.4f   arg A = %.2f deg", pa.radius, pa.angle_rad * kRadToDeg);
-    ImGui::Text("|B| = %.4f   arg B = %.2f deg", pb.radius, pb.angle_rad * kRadToDeg);
-    ImGui::Text("A - B = (%.4f, %.4f)   |A - B| = %.4f", (a - b).x, (a - b).y,
-                vecmath::magnitude(a - b));
-    ImGui::Text("A + B = (%.4f, %.4f)", (a + b).x, (a + b).y);
     ImGui::Text("A . B = %.4f", vecmath::dot(a, b));
     ImGui::Text("angle(A, B) = %.2f deg", vecmath::angle_between(a, b) * kRadToDeg);
 
