@@ -24,6 +24,8 @@ constexpr int kArcSegments = 48;
 constexpr double kRotationIndicatorSweep = kPi / 6.0;  // 30 degrees
 // Spoke labels sit just outside the outer ring rather than exactly on it.
 constexpr double kLabelRadiusFactor = 1.08;
+// Shift-to-snap increment (#50): 15 degrees, in plotted/visual space.
+constexpr double kSnapIncrementRadians = kPi / 12.0;
 // Headroom the axis view needs beyond a PlotFrame's extent so spoke-degree
 // labels (drawn at kLabelRadiusFactor * extent, plus their own text width)
 // aren't clipped by the plot's axis limits.
@@ -509,9 +511,12 @@ HoverTarget hover_target(Point head_a, Point head_b, AngleConvention convention)
     const ImVec2 plot_min_px = ImPlot::GetPlotPos();
     const ImVec2 plot_size_px = ImPlot::GetPlotSize();
     const ImVec2 mouse_px = ImGui::GetMousePos();
-    const bool mouse_in_plot_rect =
-        mouse_px.x >= plot_min_px.x && mouse_px.x <= plot_min_px.x + plot_size_px.x &&
-        mouse_px.y >= plot_min_px.y && mouse_px.y <= plot_min_px.y + plot_size_px.y;
+    const PixelRect plot_rect{
+        /*min=*/{static_cast<double>(plot_min_px.x), static_cast<double>(plot_min_px.y)},
+        /*max=*/{static_cast<double>(plot_min_px.x + plot_size_px.x),
+                 static_cast<double>(plot_min_px.y + plot_size_px.y)}};
+    const bool mouse_in_plot_rect = point_in_rect(
+        {static_cast<double>(mouse_px.x), static_cast<double>(mouse_px.y)}, plot_rect);
     const bool plot_hovered =
         mouse_in_plot_rect &&
         ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows |
@@ -552,6 +557,25 @@ Point clamp_to_rect(Point p, PixelRect rect) {
     return {std::clamp(p.x, rect.min.x, rect.max.x), std::clamp(p.y, rect.min.y, rect.max.y)};
 }
 
+bool point_in_rect(Point p, PixelRect rect) {
+    return p.x >= rect.min.x && p.x <= rect.max.x && p.y >= rect.min.y && p.y <= rect.max.y;
+}
+
+Point resolve_drag_target(Point plotted, bool shift_snap, bool auto_scale, double visible_extent) {
+    // Snap first, then clamp (#44/#49/#50/#82): snapping rotates the point
+    // (e.g. toward a square's corner), which can otherwise push it back
+    // outside `visible_extent` after an already-clamped point was snapped,
+    // so the clamp must run last to stay the binding constraint.
+    Point resolved = plotted;
+    if (shift_snap) {
+        resolved = snap_angle_to_increment(resolved, kSnapIncrementRadians);
+    }
+    if (!auto_scale) {
+        resolved = clamp_to_extent(resolved, visible_extent);
+    }
+    return resolved;
+}
+
 InteractiveVectorResult draw_interactive_vector(
     const char* label, Point head, AngleConvention convention, TipMarkerStyle marker_style,
     bool is_hover_target, bool was_dragging, float thickness, bool auto_scale,
@@ -581,23 +605,8 @@ InteractiveVectorResult draw_interactive_vector(
         const ImPlotPoint mouse_plot = ImPlot::PixelsToPlot(
             ImVec2(static_cast<float>(clamped_px.x), static_cast<float>(clamped_px.y)));
 
-        Point plotted{mouse_plot.x, mouse_plot.y};
-        // 15 degree snap increment, in plotted/visual space -- see #50.
-        // Applied before the manual-scale clamp below: snapping rotates the
-        // point (e.g. toward a square's corner), which can otherwise push it
-        // back outside `visible_extent` after an already-clamped point was
-        // snapped, so the clamp must run last to stay the binding
-        // constraint (#49's "never leave the visible extent" invariant).
-        constexpr double kSnapIncrementRadians = kPi / 12.0;
-        if (ImGui::GetIO().KeyShift) {
-            plotted = snap_angle_to_increment(plotted, kSnapIncrementRadians);
-        }
-        // Manual-scale clamp (#44/#49): only when auto-scale is off, so the
-        // existing auto-fit behavior (extent grows with the vector's
-        // magnitude) stays unaffected when auto-scale is on.
-        if (!auto_scale) {
-            plotted = clamp_to_extent(plotted, visible_extent);
-        }
+        const Point plotted = resolve_drag_target(
+            Point{mouse_plot.x, mouse_plot.y}, ImGui::GetIO().KeyShift, auto_scale, visible_extent);
         updated_head = from_plotted_point(plotted, convention);
     }
 
