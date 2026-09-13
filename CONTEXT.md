@@ -68,6 +68,19 @@ the name, e.g. `A` — not its magnitude/angle, which already lives in the
 side panel). General mechanism for every named vector, not a special case
 for zero or near-zero results.
 
+**Length tick**:
+A short horizontal mark `polar_plotting` draws on the vertical scale ruler
+(the Y2 axis; see `ruler_ticks`) at a vector's magnitude, colored to match
+that vector's plotted color. One per currently-shown vector (A, B, any
+toggled derived vector), drawn immediately after the vector itself so its
+color can be read off `ImPlot::GetLastItemColor()` — the same trick
+`plot_arrow_shape` uses to keep a vector's own shaft and arrowhead in sync —
+rather than assigned independently. Always the vector's magnitude
+(`hypot(x, y)`), never its plotted y-coordinate, so it's fully decoupled
+from angle: two vectors of equal length but different angle tick at the
+same height. A vector whose magnitude exceeds the ruler's current visible
+extent gets no tick at all, rather than one out of bounds.
+
 **Annotation**:
 Something `ui` passes to `polar_plotting` purely to be drawn — `polar_plotting`
 has no concept of what it represents (a construction line, a sum, a
@@ -99,3 +112,14 @@ free vector connecting `B`'s tip to `A`'s tip — congruent to `A − B` itself,
 but drawn where the two source vectors actually are rather than at the
 origin, as a visual proof that the two are the same vector. Independently
 toggleable from the tip-to-tail construction.
+
+**Theme**:
+One of the app's five built-in visual styles (`kSlate`, `kMidnight`,
+`kPaper`, `kNordLight`, `kMint`), chosen from the menu bar's Theme menu and
+persisted via `ui::Config`. A theme is a small, fixed set of `ImGuiStyle`
+colors/rounding values (`ui::ThemeStyle`) — not a full style copy — applied
+to `ImGui::GetStyle()` once when the selection changes, not every frame.
+`kSlate` is the baseline: it reproduces the app's pre-theme default ImGui
+look exactly, so it is never a visual regression. `kSlate`/`kMidnight` are
+dark with sharp/default corner rounding; `kPaper`/`kNordLight`/`kMint` are
+light with noticeably larger rounding.

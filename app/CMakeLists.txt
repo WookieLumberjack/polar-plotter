@@ -6,6 +6,9 @@ set_target_properties(polar_plotter_app PROPERTIES
 
 target_compile_features(polar_plotter_app PRIVATE cxx_std_23)
 
+add_dependencies(polar_plotter_app generate_jetbrains_mono_header)
+target_include_directories(polar_plotter_app PRIVATE ${CMAKE_BINARY_DIR}/generated)
+
 target_link_libraries(polar_plotter_app
     PRIVATE
         polar_plotter::ui

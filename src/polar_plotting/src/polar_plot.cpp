@@ -98,6 +98,22 @@ ArrowheadWings arrowhead_wing_points(Point tail, Point head, double head_frac) {
 
 double inflate_for_labels(PlotFrame frame) { return frame.extent() * kLabelPaddingFactor; }
 
+AxisHalfRanges axis_half_ranges(double canvas_width_px, double canvas_height_px,
+                                double half_range) {
+    // Degenerate canvas (e.g. before the first layout pass) -- fall back to
+    // equal half-ranges rather than dividing by zero/negative pixel extents.
+    if (canvas_width_px <= 0.0 || canvas_height_px <= 0.0) {
+        return {half_range, half_range};
+    }
+    if (canvas_width_px < canvas_height_px) {
+        return {half_range, half_range * (canvas_height_px / canvas_width_px)};
+    }
+    if (canvas_height_px < canvas_width_px) {
+        return {half_range * (canvas_width_px / canvas_height_px), half_range};
+    }
+    return {half_range, half_range};
+}
+
 double apply_angle_convention(double math_angle, AngleConvention convention) {
     const double angle = convention.zero_direction + (convention.angle_sign * math_angle);
     double wrapped = std::fmod(angle, kTwoPi);
@@ -153,6 +169,25 @@ std::vector<RulerTick> ruler_ticks(double ring_interval, int ring_count) {
     return ticks;
 }
 
+std::vector<double> minor_ruler_ticks(double ring_interval, int ring_count,
+                                      int subdivisions_per_ring) {
+    std::vector<double> ticks;
+    if (subdivisions_per_ring <= 1) {
+        return ticks;
+    }
+    ticks.reserve(static_cast<std::size_t>(ring_count) *
+                  static_cast<std::size_t>(subdivisions_per_ring - 1));
+    for (int r = 0; r < ring_count; ++r) {
+        const double segment_start = ring_interval * static_cast<double>(r);
+        for (int k = 1; k < subdivisions_per_ring; ++k) {
+            const double offset =
+                ring_interval * static_cast<double>(k) / static_cast<double>(subdivisions_per_ring);
+            ticks.push_back(segment_start + offset);
+        }
+    }
+    return ticks;
+}
+
 bool begin_vector_plot(const char* title, PlotFrame frame) {
     const double extent = inflate_for_labels(frame);
     // Suppress the rectangular plot-area border ImPlot draws by default; the
@@ -161,7 +196,13 @@ bool begin_vector_plot(const char* title, PlotFrame frame) {
     // matching ImPlot's "only call EndPlot() if BeginPlot() returns true"
     // contract.
     ImPlot::PushStyleColor(ImPlotCol_PlotBorder, ImVec4(0.0F, 0.0F, 0.0F, 0.0F));
-    constexpr ImPlotFlags kPlotFlags = ImPlotFlags_Equal | ImPlotFlags_NoInputs;
+    // Captured before BeginPlot, since the plot fills whatever space is
+    // available (ImVec2(-1, -1) below) -- this is that space's pixel size.
+    // Drives axis_half_ranges so the rings stay circular at any aspect ratio
+    // (#61) instead of relying on ImPlotFlags_Equal, which fights manual
+    // per-axis limits once the canvas isn't square.
+    const ImVec2 canvas_size = ImGui::GetContentRegionAvail();
+    constexpr ImPlotFlags kPlotFlags = ImPlotFlags_NoInputs;
     if (!ImPlot::BeginPlot(title, ImVec2(-1, -1), kPlotFlags)) {
         ImPlot::PopStyleColor();
         return false;
@@ -171,10 +212,13 @@ bool begin_vector_plot(const char* title, PlotFrame frame) {
     // gridlines entirely rather than just hiding the labels.
     constexpr ImPlotAxisFlags kAxisFlags = ImPlotAxisFlags_NoDecorations;
     ImPlot::SetupAxes("x", "y", kAxisFlags, kAxisFlags);
+    const AxisHalfRanges half_ranges = axis_half_ranges(static_cast<double>(canvas_size.x),
+                                                        static_cast<double>(canvas_size.y), extent);
     // Re-apply every frame (ImPlotCond_Always) so leftover pan/zoom state
     // can never drift the limits away from the caller-supplied extent, even
     // though ImPlotFlags_NoInputs already blocks new pan/zoom input.
-    ImPlot::SetupAxesLimits(-extent, extent, -extent, extent, ImPlotCond_Always);
+    ImPlot::SetupAxesLimits(-half_ranges.x, half_ranges.x, -half_ranges.y, half_ranges.y,
+                            ImPlotCond_Always);
 
     // Secondary vertical axis: a scale ruler on the plot's opposite (right)
     // side, showing the real distance each ring represents. No gridlines (the
@@ -183,18 +227,30 @@ bool begin_vector_plot(const char* title, PlotFrame frame) {
     constexpr ImPlotAxisFlags kRulerFlags =
         ImPlotAxisFlags_Opposite | ImPlotAxisFlags_NoGridLines | ImPlotAxisFlags_Lock;
     ImPlot::SetupAxis(ImAxis_Y2, nullptr, kRulerFlags);
-    ImPlot::SetupAxisLimits(ImAxis_Y2, -extent, extent, ImPlotCond_Always);
+    ImPlot::SetupAxisLimits(ImAxis_Y2, -half_ranges.y, half_ranges.y, ImPlotCond_Always);
 
     const std::vector<RulerTick> ticks = ruler_ticks(frame.ring_interval(), frame.ring_count());
+    // Fixed at implementation time (#63): quarters between each pair of
+    // adjacent major rings (and origin-to-first-ring), rendered unlabeled via
+    // the same SetupAxisTicks mechanism as the major ticks below (an empty
+    // label string), rather than user-configurable.
+    constexpr int kMinorSubdivisionsPerRing = 4;
+    const std::vector<double> minor_positions =
+        minor_ruler_ticks(frame.ring_interval(), frame.ring_count(), kMinorSubdivisionsPerRing);
+
     std::vector<double> positions;
     std::vector<std::string> label_strings;
     std::vector<const char*> label_pointers;
-    positions.reserve(ticks.size());
-    label_strings.reserve(ticks.size());
-    label_pointers.reserve(ticks.size());
+    positions.reserve(ticks.size() + minor_positions.size());
+    label_strings.reserve(ticks.size() + minor_positions.size());
+    label_pointers.reserve(ticks.size() + minor_positions.size());
     for (const RulerTick& tick : ticks) {
         positions.push_back(tick.position);
         label_strings.push_back(tick.label);
+    }
+    for (const double minor_position : minor_positions) {
+        positions.push_back(minor_position);
+        label_strings.emplace_back();
     }
     for (const std::string& label : label_strings) {
         label_pointers.push_back(label.c_str());
@@ -326,6 +382,31 @@ void draw_vector(const char* label, Point head, AngleConvention convention,
     draw_arrow(label, Point{0.0, 0.0}, head, convention, head_frac, thickness);
 
     draw_tip_label(label, tip);
+}
+
+void draw_length_tick(double magnitude, MarkerColor color) {
+    // The ruler (Y2) axis' current visible extent -- clamped/ignored against
+    // this, not against view_frame's own extent, so the tick always agrees
+    // with what's actually on screen right now (see begin_vector_plot: Y2's
+    // limits are set from the same PlotFrame that drives the ruler ticks).
+    const ImPlotRect limits = ImPlot::GetPlotLimits(ImAxis_X1, ImAxis_Y2);
+    if (magnitude > limits.Y.Max) {
+        return;
+    }
+
+    // A short segment sitting right at the plot's right edge, where the Y2
+    // ruler itself is drawn, sized relative to the ruler's own extent so it
+    // reads consistently regardless of zoom/manual-scale.
+    constexpr double kTickLengthFraction = 0.06;
+    constexpr float kTickThickness = 2.0F;
+    const double tick_length = limits.Y.Max * kTickLengthFraction;
+    const std::array<double, 2> xs{limits.X.Max - tick_length, limits.X.Max};
+    const std::array<double, 2> ys{magnitude, magnitude};
+
+    const ImVec4 line_color{color.r, color.g, color.b, color.a};
+    const ImPlotSpec spec{ImPlotProp_LineColor, line_color, ImPlotProp_LineWeight, kTickThickness};
+    ImPlot::SetAxes(ImAxis_X1, ImAxis_Y2);
+    ImPlot::PlotLine("##length_tick", xs.data(), ys.data(), 2, spec);
 }
 
 HoverTarget hover_hit_test(Point mouse, Point tip_a, Point tip_b, double hit_radius) {
