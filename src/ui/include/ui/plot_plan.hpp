@@ -62,8 +62,13 @@ inline constexpr int kAutoFitRings = 4;
 
 /// Computes this frame's auto-fit extent/ring-interval/ring-count from the
 /// magnitudes of the vectors currently shown -- \p inputs' A and B always,
-/// plus the sum and/or difference when their respective
-/// show_sum/show_difference toggle is on. Pads the largest magnitude by a
+/// plus each derived vector (sum, difference, B - A, the complex product
+/// A x B, and the two complex quotients A / B, B / A) whenever its
+/// respective show_* toggle is on, so a toggled-on derived vector can never
+/// render past the visible extent regardless of how large its magnitude is
+/// relative to A and B. A quotient with a zero divisor (undefined, see
+/// vecmath::complex_divide) is simply excluded rather than contributing an
+/// infinite magnitude. Pads the largest magnitude by a
 /// margin, then snaps the result up to the smallest "nice" ring interval (a
 /// value from the 1/2/5 x 10^k step sequence) such that kAutoFitRings rings
 /// comfortably contain it, so the view stays visually stable (no jitter) as

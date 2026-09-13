@@ -509,11 +509,11 @@ void App::draw_plot() {
     // auto_scale_ is true.
     const polarplot::InteractiveVectorResult a_result = polarplot::draw_interactive_vector(
         "A", plan.a, plan.convention, marker_style_, hovered == polarplot::HoverTarget::kA,
-        a_.dragging_, /*head_frac=*/0.12, line_width_, auto_scale_, extent);
+        a_.dragging_, line_width_, auto_scale_, extent);
     draw_length_tick_for(a_result.head);
     const polarplot::InteractiveVectorResult b_result = polarplot::draw_interactive_vector(
         "B", plan.b, plan.convention, marker_style_, hovered == polarplot::HoverTarget::kB,
-        b_.dragging_, /*head_frac=*/0.12, line_width_, auto_scale_, extent);
+        b_.dragging_, line_width_, auto_scale_, extent);
     draw_length_tick_for(b_result.head);
     // Live drag tooltip (#44/#51): only while actively dragging, not during a
     // plain pre-drag hover -- disappears the instant the drag ends, since a
@@ -528,32 +528,30 @@ void App::draw_plot() {
     apply_interactive_result(b_, b_result);
     if (plan.difference) {
         polarplot::draw_vector("A - B", *plan.difference, plan.convention, marker_style_,
-                               /*head_frac=*/0.12, line_width_);
+                               line_width_);
         draw_length_tick_for(*plan.difference);
     }
     if (plan.sum) {
-        polarplot::draw_vector("A + B", *plan.sum, plan.convention, marker_style_,
-                               /*head_frac=*/0.12, line_width_);
+        polarplot::draw_vector("A + B", *plan.sum, plan.convention, marker_style_, line_width_);
         draw_length_tick_for(*plan.sum);
     }
     if (plan.difference_ba) {
         polarplot::draw_vector("B - A", *plan.difference_ba, plan.convention, marker_style_,
-                               /*head_frac=*/0.12, line_width_);
+                               line_width_);
         draw_length_tick_for(*plan.difference_ba);
     }
     if (plan.product) {
-        polarplot::draw_vector("A x B", *plan.product, plan.convention, marker_style_,
-                               /*head_frac=*/0.12, line_width_);
+        polarplot::draw_vector("A x B", *plan.product, plan.convention, marker_style_, line_width_);
         draw_length_tick_for(*plan.product);
     }
     if (plan.quotient_ab) {
         polarplot::draw_vector("A / B", *plan.quotient_ab, plan.convention, marker_style_,
-                               /*head_frac=*/0.12, line_width_);
+                               line_width_);
         draw_length_tick_for(*plan.quotient_ab);
     }
     if (plan.quotient_ba) {
         polarplot::draw_vector("B / A", *plan.quotient_ba, plan.convention, marker_style_,
-                               /*head_frac=*/0.12, line_width_);
+                               line_width_);
         draw_length_tick_for(*plan.quotient_ba);
     }
     // Positional ids: fine because draw_annotation_vector's id is never shown
@@ -563,11 +561,11 @@ void App::draw_plot() {
     for (std::size_t i = 0; i < plan.tip_to_tail_annotations.size(); ++i) {
         const std::string id = "tip_to_tail_" + std::to_string(i);
         polarplot::draw_annotation_vector(id.c_str(), plan.tip_to_tail_annotations[i],
-                                          plan.convention, /*head_frac=*/0.12, line_width_);
+                                          plan.convention, line_width_);
     }
     if (plan.difference_segment) {
         polarplot::draw_annotation_vector("diff_segment_b_to_a_tip", *plan.difference_segment,
-                                          plan.convention, /*head_frac=*/0.12, line_width_);
+                                          plan.convention, line_width_);
     }
     if (plan.zero_direction_arc_angle) {
         polarplot::ArcStyle arc_style{};

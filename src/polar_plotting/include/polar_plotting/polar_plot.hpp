@@ -222,15 +222,38 @@ enum class TipMarkerStyle : std::uint8_t {
     kCrossHair,
 };
 
+/// Fixed on-screen length (pixels) of every arrowhead this module draws --
+/// vector shafts/annotations alike -- regardless of the shaft's data-space
+/// length or the plot's current zoom/auto-scale. Arrowheads used to be sized
+/// as a fraction of the shaft's data-space length, so the same visual head
+/// grew or shrank with auto-scale: a short vector's head all but vanished
+/// (looked like a bare line) while a long one's ballooned. See
+/// \ref head_frac_for_fixed_pixels, the conversion this fixed length feeds
+/// into every frame.
+inline constexpr float kHeadLengthPixels = 14.0F;
+
+/// Converts \p head_length_px (a fixed on-screen arrowhead length, pixels)
+/// into the head_frac \ref arrowhead_wing_points expects, given the shaft's
+/// own on-screen \p shaft_length_px (pixels, i.e. the same tail-to-head
+/// segment already projected to screen space) -- both in pixel space, so the
+/// ratio is scale-independent and works regardless of the plot's current
+/// zoom/aspect. Clamped to at most 0.9 so the head can never consume more
+/// than 90% of a shaft shorter than the target pixel length: it shrinks
+/// along with the shaft instead of overshooting past the tail. Degenerate
+/// input (\p shaft_length_px <= 0) returns 0.0 (no visible head) rather than
+/// dividing by zero. Pure function -- the test seam for this conversion.
+[[nodiscard]] double head_frac_for_fixed_pixels(double head_length_px, double shaft_length_px);
+
 /// Draw an arrow (shaft + head) from \p tail to \p head, labelled \p label.
 /// \p tail and \p head are given in math convention and remapped via
-/// \p convention before drawing. \p head_frac is the arrowhead length as a
-/// fraction of the shaft length. \p thickness is the shaft/head line weight
-/// in pixels, applied to both. This is the bare drawing primitive -- it
-/// carries no tip marker or tip label; use \ref draw_vector for a named
-/// vector, which always gets both.
+/// \p convention before drawing. The arrowhead is always \ref
+/// kHeadLengthPixels on screen (see \ref head_frac_for_fixed_pixels) --
+/// there is no per-call head-size override. \p thickness is the shaft/head
+/// line weight in pixels, applied to both. This is the bare drawing
+/// primitive -- it carries no tip marker or tip label; use \ref draw_vector
+/// for a named vector, which always gets both.
 void draw_arrow(const char* label, Point tail, Point head, AngleConvention convention,
-                double head_frac = 0.12, float thickness = 2.0F);
+                float thickness = 2.0F);
 
 /// RGBA color override for a named vector's tip marker (components in
 /// [0, 1]). Kept as a plain struct -- rather than an ImGui/ImPlot type -- so
@@ -278,7 +301,7 @@ void draw_length_tick(double magnitude, MarkerColor color);
 /// The override applies only to the tip marker -- the shaft, arrowhead, and
 /// tip label always keep their normal color.
 void draw_vector(const char* label, Point head, AngleConvention convention,
-                 TipMarkerStyle marker_style, double head_frac = 0.12, float thickness = 2.0F,
+                 TipMarkerStyle marker_style, float thickness = 2.0F,
                  const MarkerColor* marker_color = nullptr);
 
 /// Which of A's or B's tip (if either) is the target of a hover/drag
@@ -421,8 +444,8 @@ struct InteractiveVectorResult {
 /// mid-drag takes effect the very next frame.
 [[nodiscard]] InteractiveVectorResult draw_interactive_vector(
     const char* label, Point head, AngleConvention convention, TipMarkerStyle marker_style,
-    bool is_hover_target, bool was_dragging, double head_frac = 0.12, float thickness = 2.0F,
-    bool auto_scale = true, double visible_extent = 0.0);
+    bool is_hover_target, bool was_dragging, float thickness = 2.0F, bool auto_scale = true,
+    double visible_extent = 0.0);
 
 /// A free-vector annotation: an arrow beginning at an explicit \p start point
 /// (never assumed to originate at the origin) and displaced by \p vector.
@@ -443,7 +466,7 @@ struct AnnotationVector {
 /// convention and remapped via \p convention before drawing, exactly like
 /// \ref draw_arrow. \p thickness is the shaft/head line weight in pixels.
 void draw_annotation_vector(const char* id, AnnotationVector annotation, AngleConvention convention,
-                            double head_frac = 0.12, float thickness = 2.0F);
+                            float thickness = 2.0F);
 
 /// Visual style for \ref draw_angle_arc and \ref draw_rotation_indicator: an
 /// RGBA color (components in [0, 1]) and a line thickness (pixels). Kept as a

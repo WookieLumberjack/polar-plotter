@@ -35,6 +35,8 @@ ThemeStyle slate_style() {
         .button_hovered = to_theme_color(defaults.Colors[ImGuiCol_ButtonHovered]),
         .button_active = to_theme_color(defaults.Colors[ImGuiCol_ButtonActive]),
         .tab_selected = to_theme_color(defaults.Colors[ImGuiCol_TabSelected]),
+        .table_header_bg = to_theme_color(defaults.Colors[ImGuiCol_TableHeaderBg]),
+        .table_border = to_theme_color(defaults.Colors[ImGuiCol_TableBorderStrong]),
     };
 }
 
@@ -58,6 +60,8 @@ ThemeStyle midnight_style() {
         .button_hovered = {0.18F, 0.26F, 0.42F, 1.00F},
         .button_active = {0.22F, 0.32F, 0.50F, 1.00F},
         .tab_selected = {0.14F, 0.20F, 0.34F, 1.00F},
+        .table_header_bg = {0.10F, 0.14F, 0.22F, 1.00F},
+        .table_border = {0.20F, 0.26F, 0.38F, 1.00F},
     };
 }
 
@@ -80,6 +84,8 @@ ThemeStyle paper_style() {
         .button_hovered = {0.87F, 0.83F, 0.72F, 1.00F},
         .button_active = {0.90F, 0.86F, 0.74F, 1.00F},
         .tab_selected = {0.85F, 0.81F, 0.70F, 1.00F},
+        .table_header_bg = {0.88F, 0.86F, 0.80F, 1.00F},
+        .table_border = {0.70F, 0.66F, 0.56F, 1.00F},
     };
 }
 
@@ -102,6 +108,8 @@ ThemeStyle nord_light_style() {
         .button_hovered = {0.60F, 0.80F, 0.86F, 1.00F},
         .button_active = {0.37F, 0.51F, 0.67F, 1.00F},
         .tab_selected = {0.53F, 0.75F, 0.82F, 1.00F},
+        .table_header_bg = {0.80F, 0.86F, 0.94F, 1.00F},
+        .table_border = {0.60F, 0.68F, 0.78F, 1.00F},
     };
 }
 
@@ -124,6 +132,8 @@ ThemeStyle mint_style() {
         .button_hovered = {0.46F, 0.84F, 0.66F, 1.00F},
         .button_active = {0.30F, 0.68F, 0.50F, 1.00F},
         .tab_selected = {0.40F, 0.78F, 0.60F, 1.00F},
+        .table_header_bg = {0.75F, 0.90F, 0.80F, 1.00F},
+        .table_border = {0.45F, 0.72F, 0.58F, 1.00F},
     };
 }
 
@@ -171,6 +181,10 @@ void apply_theme(const ThemeStyle& style) {
     s.Colors[ImGuiCol_ButtonHovered] = to_imvec4(style.button_hovered);
     s.Colors[ImGuiCol_ButtonActive] = to_imvec4(style.button_active);
     s.Colors[ImGuiCol_TabSelected] = tab_selected;
+    s.Colors[ImGuiCol_TableHeaderBg] = to_imvec4(style.table_header_bg);
+    const ImVec4 table_border = to_imvec4(style.table_border);
+    s.Colors[ImGuiCol_TableBorderStrong] = table_border;
+    s.Colors[ImGuiCol_TableBorderLight] = table_border;
 
     // A docked panel with a single tab renders that tab as its title
     // bar/tab strip, colored by this family -- Dear ImGui's own theme
