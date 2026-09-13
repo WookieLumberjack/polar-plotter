@@ -7,6 +7,11 @@ namespace {
 
 ThemeColor to_theme_color(const ImVec4& c) { return {c.x, c.y, c.z, c.w}; }
 
+ImVec4 lerp(const ImVec4& a, const ImVec4& b, float t) {
+    return {a.x + ((b.x - a.x) * t), a.y + ((b.y - a.y) * t), a.z + ((b.z - a.z) * t),
+            a.w + ((b.w - a.w) * t)};
+}
+
 // kSlate reproduces today's default ImGui look exactly: a fresh, default-
 // constructed ImGuiStyle (no live context required -- it's a plain struct
 // whose constructor just fills in ImGui's built-in dark theme and zero
@@ -20,7 +25,10 @@ ThemeStyle slate_style() {
         .text = to_theme_color(defaults.Colors[ImGuiCol_Text]),
         .window_bg = to_theme_color(defaults.Colors[ImGuiCol_WindowBg]),
         .frame_bg = to_theme_color(defaults.Colors[ImGuiCol_FrameBg]),
+        .title_bg = to_theme_color(defaults.Colors[ImGuiCol_TitleBg]),
         .title_bg_active = to_theme_color(defaults.Colors[ImGuiCol_TitleBgActive]),
+        .menu_bar_bg = to_theme_color(defaults.Colors[ImGuiCol_MenuBarBg]),
+        .popup_bg = to_theme_color(defaults.Colors[ImGuiCol_PopupBg]),
         .header = to_theme_color(defaults.Colors[ImGuiCol_Header]),
         .header_hovered = to_theme_color(defaults.Colors[ImGuiCol_HeaderHovered]),
         .button = to_theme_color(defaults.Colors[ImGuiCol_Button]),
@@ -40,7 +48,10 @@ ThemeStyle midnight_style() {
         .text = {0.92F, 0.93F, 0.95F, 1.00F},
         .window_bg = {0.04F, 0.06F, 0.10F, 0.94F},
         .frame_bg = {0.10F, 0.14F, 0.22F, 0.60F},
+        .title_bg = {0.04F, 0.06F, 0.10F, 0.94F},
         .title_bg_active = {0.06F, 0.09F, 0.16F, 1.00F},
+        .menu_bar_bg = {0.06F, 0.09F, 0.16F, 1.00F},
+        .popup_bg = {0.05F, 0.08F, 0.13F, 0.96F},
         .header = {0.14F, 0.20F, 0.34F, 1.00F},
         .header_hovered = {0.18F, 0.26F, 0.42F, 1.00F},
         .button = {0.14F, 0.20F, 0.34F, 1.00F},
@@ -59,7 +70,10 @@ ThemeStyle paper_style() {
         .text = {0.15F, 0.13F, 0.10F, 1.00F},
         .window_bg = {0.96F, 0.95F, 0.92F, 1.00F},
         .frame_bg = {0.88F, 0.86F, 0.80F, 1.00F},
+        .title_bg = {0.96F, 0.95F, 0.92F, 1.00F},
         .title_bg_active = {0.90F, 0.87F, 0.80F, 1.00F},
+        .menu_bar_bg = {0.90F, 0.87F, 0.80F, 1.00F},
+        .popup_bg = {0.98F, 0.97F, 0.94F, 0.98F},
         .header = {0.80F, 0.76F, 0.66F, 1.00F},
         .header_hovered = {0.85F, 0.81F, 0.70F, 1.00F},
         .button = {0.82F, 0.78F, 0.68F, 1.00F},
@@ -78,7 +92,10 @@ ThemeStyle nord_light_style() {
         .text = {0.18F, 0.20F, 0.25F, 1.00F},
         .window_bg = {0.925F, 0.937F, 0.957F, 1.00F},
         .frame_bg = {0.85F, 0.87F, 0.91F, 1.00F},
+        .title_bg = {0.925F, 0.937F, 0.957F, 1.00F},
         .title_bg_active = {0.80F, 0.86F, 0.94F, 1.00F},
+        .menu_bar_bg = {0.80F, 0.86F, 0.94F, 1.00F},
+        .popup_bg = {0.96F, 0.97F, 0.99F, 0.98F},
         .header = {0.53F, 0.75F, 0.82F, 1.00F},
         .header_hovered = {0.60F, 0.80F, 0.86F, 1.00F},
         .button = {0.53F, 0.75F, 0.82F, 1.00F},
@@ -97,7 +114,10 @@ ThemeStyle mint_style() {
         .text = {0.10F, 0.20F, 0.16F, 1.00F},
         .window_bg = {0.93F, 0.98F, 0.95F, 1.00F},
         .frame_bg = {0.80F, 0.93F, 0.85F, 1.00F},
+        .title_bg = {0.93F, 0.98F, 0.95F, 1.00F},
         .title_bg_active = {0.75F, 0.90F, 0.80F, 1.00F},
+        .menu_bar_bg = {0.75F, 0.90F, 0.80F, 1.00F},
+        .popup_bg = {0.96F, 0.99F, 0.97F, 0.98F},
         .header = {0.40F, 0.78F, 0.60F, 1.00F},
         .header_hovered = {0.46F, 0.84F, 0.66F, 1.00F},
         .button = {0.40F, 0.78F, 0.60F, 1.00F},
@@ -132,16 +152,37 @@ void apply_theme(const ThemeStyle& style) {
     s.GrabRounding = style.grab_rounding;
 
     const auto to_imvec4 = [](const ThemeColor& c) { return ImVec4(c.r, c.g, c.b, c.a); };
+    const ImVec4 header = to_imvec4(style.header);
+    const ImVec4 header_hovered = to_imvec4(style.header_hovered);
+    const ImVec4 title_bg = to_imvec4(style.title_bg);
+    const ImVec4 title_bg_active = to_imvec4(style.title_bg_active);
+    const ImVec4 tab_selected = to_imvec4(style.tab_selected);
+
     s.Colors[ImGuiCol_Text] = to_imvec4(style.text);
     s.Colors[ImGuiCol_WindowBg] = to_imvec4(style.window_bg);
     s.Colors[ImGuiCol_FrameBg] = to_imvec4(style.frame_bg);
-    s.Colors[ImGuiCol_TitleBgActive] = to_imvec4(style.title_bg_active);
-    s.Colors[ImGuiCol_Header] = to_imvec4(style.header);
-    s.Colors[ImGuiCol_HeaderHovered] = to_imvec4(style.header_hovered);
+    s.Colors[ImGuiCol_TitleBg] = title_bg;
+    s.Colors[ImGuiCol_TitleBgActive] = title_bg_active;
+    s.Colors[ImGuiCol_MenuBarBg] = to_imvec4(style.menu_bar_bg);
+    s.Colors[ImGuiCol_PopupBg] = to_imvec4(style.popup_bg);
+    s.Colors[ImGuiCol_Header] = header;
+    s.Colors[ImGuiCol_HeaderHovered] = header_hovered;
     s.Colors[ImGuiCol_Button] = to_imvec4(style.button);
     s.Colors[ImGuiCol_ButtonHovered] = to_imvec4(style.button_hovered);
     s.Colors[ImGuiCol_ButtonActive] = to_imvec4(style.button_active);
-    s.Colors[ImGuiCol_TabSelected] = to_imvec4(style.tab_selected);
+    s.Colors[ImGuiCol_TabSelected] = tab_selected;
+
+    // A docked panel with a single tab renders that tab as its title
+    // bar/tab strip, colored by this family -- Dear ImGui's own theme
+    // constructors derive it from Header/TitleBg*/TabSelected once at
+    // startup and never recompute it, so re-derive it here the same way
+    // every time the theme changes (see ThemeStyle::title_bg's doc comment).
+    s.Colors[ImGuiCol_TabHovered] = header_hovered;
+    const ImVec4 tab = lerp(header, title_bg_active, 0.80F);
+    s.Colors[ImGuiCol_Tab] = tab;
+    s.Colors[ImGuiCol_TabDimmed] = lerp(tab, title_bg, 0.80F);
+    s.Colors[ImGuiCol_TabDimmedSelected] = lerp(tab_selected, title_bg, 0.40F);
+    s.Colors[ImGuiCol_TabSelectedOverline] = header_hovered;
 }
 
 const char* theme_label(Theme theme) {
