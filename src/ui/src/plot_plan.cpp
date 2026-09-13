@@ -56,6 +56,34 @@ double snap_up_to_nice_step(double value) {
     return kSteps.back() * decade;
 }
 
+// Push order matches App::draw_plot's draw/legend order (see
+// PlotPlan::derived_vectors' contract comment), not plan_plot's computation
+// order for the six named optional fields above -- purely a list-shaped view
+// over values plan_plot has already computed, no new computation. Factored
+// out of plan_plot to keep that function's cognitive complexity down.
+std::vector<PlotPlan::DerivedVector> collect_derived_vectors(const PlotPlan& plan) {
+    std::vector<PlotPlan::DerivedVector> derived_vectors;
+    if (plan.difference) {
+        derived_vectors.push_back({"A - B", *plan.difference});
+    }
+    if (plan.sum) {
+        derived_vectors.push_back({"A + B", *plan.sum});
+    }
+    if (plan.difference_ba) {
+        derived_vectors.push_back({"B - A", *plan.difference_ba});
+    }
+    if (plan.product) {
+        derived_vectors.push_back({"A x B", *plan.product});
+    }
+    if (plan.quotient_ab) {
+        derived_vectors.push_back({"A / B", *plan.quotient_ab});
+    }
+    if (plan.quotient_ba) {
+        derived_vectors.push_back({"B / A", *plan.quotient_ba});
+    }
+    return derived_vectors;
+}
+
 }  // namespace
 
 polarplot::PlotFrame auto_fit_extent(const PlotInputs& inputs) {
@@ -162,6 +190,8 @@ PlotPlan plan_plot(const PlotInputs& inputs) {
     if (inputs.zero_direction_input_focused || inputs.show_zero_direction_arc_persistent) {
         plan.zero_direction_arc_angle = plan.convention.zero_direction;
     }
+
+    plan.derived_vectors = collect_derived_vectors(plan);
 
     return plan;
 }
