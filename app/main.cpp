@@ -23,9 +23,15 @@
 #include <imgui_impl_opengl3.h>
 #include <implot.h>
 
+#include "jetbrains_mono_medium.h"
 #include "ui/app.hpp"
 
 namespace {
+
+// Fixed size for the app's one and only font, chosen for this app's widget
+// density (compact input rows, plot labels, tables) at the default window
+// size. No font-size UI: see #60.
+constexpr float kFontSizePixels = 18.0F;
 
 void glfw_error_callback(int error, const char* description) {
     std::fprintf(stderr, "GLFW error %d: %s\n", error, description);
@@ -124,6 +130,13 @@ int main() {
     // window-move to, not the plot body itself (re-verified manually, see
     // #58).
     ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
+
+    // JetBrains Mono Medium, embedded at build time (binary_to_compressed_c
+    // over the fetched TTF, see cmake/Dependencies.cmake) -- no
+    // AddFontFromFileTTF / runtime file path loading. This is the app's
+    // default and only font (#60).
+    ImGui::GetIO().Fonts->AddFontFromMemoryCompressedTTF(
+        JetBrainsMonoMedium_compressed_data, JetBrainsMonoMedium_compressed_size, kFontSizePixels);
 
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glsl_version);
