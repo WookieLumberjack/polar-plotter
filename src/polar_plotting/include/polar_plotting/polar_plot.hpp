@@ -128,12 +128,26 @@ struct RulerTick {
 /// placement, mirroring \ref spoke_labels for the grid's spokes.
 [[nodiscard]] std::vector<RulerTick> ruler_ticks(double ring_interval, int ring_count = 4);
 
+/// Compute the vertical scale ruler's minor (unlabeled) tick positions:
+/// \p subdivisions_per_ring - 1 evenly-spaced positions strictly between each
+/// pair of adjacent major ticks, including the origin-to-first-ring segment,
+/// for `r` in `[0, ring_count)` at `ring_interval * r + k * ring_interval /
+/// subdivisions_per_ring` for `k` in `[1, subdivisions_per_ring)`. Parallel to
+/// \ref ruler_ticks but returns bare positions (no labels), since minor ticks
+/// are never labelled. \p subdivisions_per_ring is a fixed constant chosen by
+/// the caller (e.g. quarters or fifths), not user-configurable; passing 1
+/// (or less) yields no minor ticks. Pure function -- the test seam for the
+/// ruler's minor tick placement.
+[[nodiscard]] std::vector<double> minor_ruler_ticks(double ring_interval, int ring_count,
+                                                    int subdivisions_per_ring);
+
 /// Begin an equal-aspect plot centred on the origin, spanning +/-
 /// \ref inflate_for_labels "inflate_for_labels(frame)" on both axes (headroom
 /// beyond \p frame's own extent so spoke-degree labels aren't clipped), plus a
 /// locked secondary vertical axis (ImPlot's Y2) on the plot's right side
 /// showing a scale ruler: explicit ticks at each ring's radius (see
-/// \ref ruler_ticks), computed from \p frame's \c ring_interval and
+/// \ref ruler_ticks), plus short unlabeled minor ticks between them (see
+/// \ref minor_ruler_ticks), computed from \p frame's \c ring_interval and
 /// \c ring_count -- callers must pass the same \p frame to \ref draw_polar_grid
 /// and \ref draw_rotation_indicator this frame so the ruler and the grid never
 /// disagree. Returns true when the plot is visible; call \ref end_vector_plot
