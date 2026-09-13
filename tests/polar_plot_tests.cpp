@@ -327,6 +327,38 @@ TEST_CASE("ruler_ticks respects a custom ring_count", "[polar_plot][ruler_ticks]
     CHECK(ticks[1].label == "1");
 }
 
+TEST_CASE("minor_ruler_ticks places subdivisions between the origin and each ring",
+          "[polar_plot][minor_ruler_ticks]") {
+    const std::vector<double> ticks = polarplot::minor_ruler_ticks(1.0, 2, 4);
+
+    // 2 rings * 3 interior subdivisions per ring segment (quarters minus the
+    // shared endpoint with the next major tick) = 6.
+    REQUIRE(ticks.size() == 6);
+    REQUIRE_THAT(ticks[0], WithinAbs(0.25, 1e-12));
+    REQUIRE_THAT(ticks[1], WithinAbs(0.5, 1e-12));
+    REQUIRE_THAT(ticks[2], WithinAbs(0.75, 1e-12));
+    REQUIRE_THAT(ticks[3], WithinAbs(1.25, 1e-12));
+    REQUIRE_THAT(ticks[4], WithinAbs(1.5, 1e-12));
+    REQUIRE_THAT(ticks[5], WithinAbs(1.75, 1e-12));
+}
+
+TEST_CASE("minor_ruler_ticks scales with a custom ring_interval and subdivisions_per_ring",
+          "[polar_plot][minor_ruler_ticks]") {
+    const std::vector<double> ticks = polarplot::minor_ruler_ticks(2.0, 1, 5);
+
+    REQUIRE(ticks.size() == 4);
+    REQUIRE_THAT(ticks[0], WithinAbs(0.4, 1e-12));
+    REQUIRE_THAT(ticks[1], WithinAbs(0.8, 1e-12));
+    REQUIRE_THAT(ticks[2], WithinAbs(1.2, 1e-12));
+    REQUIRE_THAT(ticks[3], WithinAbs(1.6, 1e-12));
+}
+
+TEST_CASE("minor_ruler_ticks yields no ticks when subdivisions_per_ring is 1 or less",
+          "[polar_plot][minor_ruler_ticks]") {
+    CHECK(polarplot::minor_ruler_ticks(1.0, 4, 1).empty());
+    CHECK(polarplot::minor_ruler_ticks(1.0, 4, 0).empty());
+}
+
 TEST_CASE("PlotFrame's extent is derived from its ring_interval and ring_count",
           "[polar_plot][plot_frame]") {
     SECTION("default ring_count") {
@@ -455,6 +487,62 @@ TEST_CASE("inflate_for_labels inflates a PlotFrame's extent by a fixed headroom 
 
         REQUIRE_THAT(polarplot::inflate_for_labels(small),
                      WithinAbs(polarplot::inflate_for_labels(large), 1e-12));
+    }
+}
+
+// #61: axis_half_ranges replaces ImPlotFlags_Equal so the rings stay
+// circular (never stretched or clipped) at any canvas pixel aspect ratio.
+TEST_CASE("axis_half_ranges on a square canvas gives equal half-ranges on both axes",
+          "[polar_plot][axis_half_ranges]") {
+    const polarplot::AxisHalfRanges ranges = polarplot::axis_half_ranges(800.0, 800.0, 5.0);
+    REQUIRE_THAT(ranges.x, WithinAbs(5.0, 1e-12));
+    REQUIRE_THAT(ranges.y, WithinAbs(5.0, 1e-12));
+}
+
+TEST_CASE("axis_half_ranges on a wide canvas gives x a larger half-range than y",
+          "[polar_plot][axis_half_ranges]") {
+    // Twice as wide as tall: y (the shorter screen dimension) gets exactly
+    // half_range, x gets padded by the pixel excess.
+    const polarplot::AxisHalfRanges ranges = polarplot::axis_half_ranges(1000.0, 500.0, 5.0);
+    REQUIRE_THAT(ranges.y, WithinAbs(5.0, 1e-12));
+    REQUIRE_THAT(ranges.x, WithinAbs(10.0, 1e-12));
+    CHECK(ranges.x > ranges.y);
+}
+
+TEST_CASE("axis_half_ranges on a tall canvas gives y a larger half-range than x",
+          "[polar_plot][axis_half_ranges]") {
+    // Twice as tall as wide: x (the shorter screen dimension) gets exactly
+    // half_range, y gets padded by the pixel excess.
+    const polarplot::AxisHalfRanges ranges = polarplot::axis_half_ranges(500.0, 1000.0, 5.0);
+    REQUIRE_THAT(ranges.x, WithinAbs(5.0, 1e-12));
+    REQUIRE_THAT(ranges.y, WithinAbs(10.0, 1e-12));
+    CHECK(ranges.y > ranges.x);
+}
+
+TEST_CASE("axis_half_ranges falls back to equal half-ranges for degenerate canvas dimensions",
+          "[polar_plot][axis_half_ranges]") {
+    SECTION("zero width") {
+        const polarplot::AxisHalfRanges ranges = polarplot::axis_half_ranges(0.0, 600.0, 5.0);
+        REQUIRE_THAT(ranges.x, WithinAbs(5.0, 1e-12));
+        REQUIRE_THAT(ranges.y, WithinAbs(5.0, 1e-12));
+    }
+
+    SECTION("zero height") {
+        const polarplot::AxisHalfRanges ranges = polarplot::axis_half_ranges(600.0, 0.0, 5.0);
+        REQUIRE_THAT(ranges.x, WithinAbs(5.0, 1e-12));
+        REQUIRE_THAT(ranges.y, WithinAbs(5.0, 1e-12));
+    }
+
+    SECTION("both dimensions zero") {
+        const polarplot::AxisHalfRanges ranges = polarplot::axis_half_ranges(0.0, 0.0, 5.0);
+        REQUIRE_THAT(ranges.x, WithinAbs(5.0, 1e-12));
+        REQUIRE_THAT(ranges.y, WithinAbs(5.0, 1e-12));
+    }
+
+    SECTION("negative dimension") {
+        const polarplot::AxisHalfRanges ranges = polarplot::axis_half_ranges(-100.0, 600.0, 5.0);
+        REQUIRE_THAT(ranges.x, WithinAbs(5.0, 1e-12));
+        REQUIRE_THAT(ranges.y, WithinAbs(5.0, 1e-12));
     }
 }
 

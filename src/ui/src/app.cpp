@@ -10,6 +10,7 @@
 #include <utility>
 
 #include <imgui.h>
+#include <imgui_internal.h>  // DockBuilder* -- no public API for the first-run default layout.
 #include <implot.h>
 
 #include "polar_plotting/polar_plot.hpp"
@@ -17,6 +18,7 @@
 #include "ui/derived_vectors.hpp"
 #include "ui/plot_plan.hpp"
 #include "ui/polar_display.hpp"
+#include "ui/theme.hpp"
 #include "ui/zero_direction.hpp"
 #include "vector_math/vec2.hpp"
 
@@ -61,6 +63,26 @@ void draw_drag_tooltip(const char* label, polarplot::Point head) {
     ImGui::Text("Real: %.3f", v.x);
     ImGui::Text("Imag: %.3f", v.y);
     ImGui::EndTooltip();
+}
+
+// Convert an ImPlot-resolved color (from ImPlot::GetLastItemColor()) to a
+// polarplot::MarkerColor, for handing a vector's just-drawn on-plot color
+// straight into polarplot::draw_length_tick (see #62) -- so a length tick's
+// color is always read off the vector's actual drawn color, never
+// independently assigned.
+polarplot::MarkerColor to_marker_color(const ImVec4& color) {
+    return {color.x, color.y, color.z, color.w};
+}
+
+// Draw a length tick for a just-drawn vector: magnitude is always
+// std::hypot(x, y) of \p head's math-convention components -- never its
+// plotted y-coordinate -- and color is read off whatever item ImPlot last
+// drew (that vector's own shaft/arrowhead), reusing draw_vector's own
+// shaft/head color-sync trick (see polar_plot.cpp's plot_arrow_shape) so tick
+// color is guaranteed to match rather than independently assigned.
+void draw_length_tick_for(polarplot::Point head) {
+    const double magnitude = std::hypot(head.x, head.y);
+    polarplot::draw_length_tick(magnitude, to_marker_color(ImPlot::GetLastItemColor()));
 }
 
 }  // namespace
@@ -154,7 +176,7 @@ void App::draw_derived_vectors_table(const DerivedVectors& derived) {
     ImGui::EndTable();
 }
 
-App::App() = default;
+App::App() { apply_current_theme(); }
 
 App::App(std::filesystem::path config_path) : config_path_(std::move(config_path)) {
     if (auto cfg = load_config(config_path_)) {
@@ -169,7 +191,9 @@ App::App(std::filesystem::path config_path) : config_path_(std::move(config_path
         line_width_ = cfg->line_width;
         auto_scale_ = cfg->auto_scale;
         manual_ring_interval_ = cfg->manual_ring_interval;
+        theme_ = cfg->theme;
     }
+    apply_current_theme();
 }
 
 App::~App() { save(); }
@@ -190,33 +214,100 @@ void App::save() const {
         .line_width = line_width_,
         .auto_scale = auto_scale_,
         .manual_ring_interval = manual_ring_interval_,
+        .theme = theme_,
     };
     (void)save_config(config_path_, cfg);
 }
 
-void App::render() {
-    // A simple side-by-side default layout; the user can move/resize freely and
-    // ImGui remembers it in imgui.ini afterwards.
+void App::apply_current_theme() const { apply_theme(theme_style(theme_)); }
+
+void App::draw_dockspace_host() {
     const ImGuiViewport* vp = ImGui::GetMainViewport();
-    const float pad = 16.0F;
-    const float controls_w = 380.0F;
+    ImGui::SetNextWindowPos(vp->WorkPos);
+    ImGui::SetNextWindowSize(vp->WorkSize);
+    ImGui::SetNextWindowViewport(vp->ID);
+
+    // Standard invisible-dockspace-host window: fills the viewport, has no
+    // chrome of its own, and never becomes a dockable node itself (only its
+    // DockSpace() child area is). ImGuiWindowFlags_MenuBar is reserved here
+    // for the File/Theme menu bar drawn below.
+    constexpr ImGuiWindowFlags kHostFlags =
+        ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar |
+        ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus |
+        ImGuiWindowFlags_NoBackground;
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0F);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0F);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0F, 0.0F));
+    ImGui::Begin("##dockspace_host", nullptr, kHostFlags);
+    ImGui::PopStyleVar(3);
+
+    draw_menu_bar();
+
+    const ImGuiID dockspace_id = ImGui::GetID("MainDockSpace");
+
+    // First run only: ImGui::DockBuilderGetNode returns null until a node
+    // with this ID has been built at least once (either by us, here, or by
+    // ImGui restoring one from a prior imgui.ini). Once it exists, layout is
+    // entirely user-driven and persisted via imgui.ini -- we never rebuild
+    // it again after this.
+    if (ImGui::DockBuilderGetNode(dockspace_id) == nullptr) {
+        ImGui::DockBuilderAddNode(dockspace_id, ImGuiDockNodeFlags_DockSpace);
+        ImGui::DockBuilderSetNodeSize(dockspace_id, vp->WorkSize);
+
+        ImGuiID left_id = 0;
+        ImGuiID right_id = 0;
+        ImGui::DockBuilderSplitNode(dockspace_id, ImGuiDir_Left, 1.0F / 3.0F, &left_id, &right_id);
+        ImGui::DockBuilderDockWindow("Vectors", left_id);
+        ImGui::DockBuilderDockWindow("Polar plot", right_id);
+        ImGui::DockBuilderFinish(dockspace_id);
+    }
+
+    ImGui::DockSpace(dockspace_id);
+    ImGui::End();
+}
+
+void App::draw_menu_bar() {
+    if (!ImGui::BeginMenuBar()) {
+        return;
+    }
+    if (ImGui::BeginMenu("File")) {
+        // See want_exit()'s doc comment for why this sets a flag rather than
+        // calling glfwSetWindowShouldClose itself.
+        if (ImGui::MenuItem("Exit")) {
+            want_exit_ = true;
+        }
+        ImGui::EndMenu();
+    }
+    if (ImGui::BeginMenu("Theme")) {
+        for (const Theme candidate : kAllThemes) {
+            const bool selected = candidate == theme_;
+            if (ImGui::MenuItem(theme_label(candidate), nullptr, selected) && !selected) {
+                theme_ = candidate;
+                apply_current_theme();
+            }
+        }
+        ImGui::EndMenu();
+    }
+    ImGui::EndMenuBar();
+}
+
+void App::render() {
+    draw_dockspace_host();
 
     // Plot drawn first: dragging a tip (see #44/#48) writes the updated
     // position straight back into a_/b_ inside draw_plot(), so drawing the
     // plot before the controls window lets that same frame's Amplitude/
     // Phase/Real/Imag fields and derived-vectors table read the fresh
     // position -- window Begin/End order doesn't otherwise matter to either
-    // window's own widgets.
-    ImGui::SetNextWindowPos({vp->WorkPos.x + controls_w + (2 * pad), vp->WorkPos.y + pad},
-                            ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize({vp->WorkSize.x - controls_w - (3 * pad), vp->WorkSize.y - (2 * pad)},
-                             ImGuiCond_FirstUseEver);
+    // window's own widgets. Both windows dock into the host's DockSpace by
+    // name (see draw_dockspace_host); no explicit position/size is set here
+    // any more -- the dockspace and, on first run, DockBuilder own that.
     ImGui::Begin("Polar plot");
     draw_plot();
     ImGui::End();
 
-    ImGui::SetNextWindowPos({vp->WorkPos.x + pad, vp->WorkPos.y + pad}, ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize({controls_w, vp->WorkSize.y - (2 * pad)}, ImGuiCond_FirstUseEver);
     ImGui::Begin("Vectors");
     draw_controls();
     ImGui::End();
@@ -419,9 +510,11 @@ void App::draw_plot() {
     const polarplot::InteractiveVectorResult a_result = polarplot::draw_interactive_vector(
         "A", plan.a, plan.convention, marker_style_, hovered == polarplot::HoverTarget::kA,
         a_.dragging_, /*head_frac=*/0.12, line_width_, auto_scale_, extent);
+    draw_length_tick_for(a_result.head);
     const polarplot::InteractiveVectorResult b_result = polarplot::draw_interactive_vector(
         "B", plan.b, plan.convention, marker_style_, hovered == polarplot::HoverTarget::kB,
         b_.dragging_, /*head_frac=*/0.12, line_width_, auto_scale_, extent);
+    draw_length_tick_for(b_result.head);
     // Live drag tooltip (#44/#51): only while actively dragging, not during a
     // plain pre-drag hover -- disappears the instant the drag ends, since a
     // kReleased/kIdle/kHovered frame no longer matches kDragging here.
@@ -436,26 +529,32 @@ void App::draw_plot() {
     if (plan.difference) {
         polarplot::draw_vector("A - B", *plan.difference, plan.convention, marker_style_,
                                /*head_frac=*/0.12, line_width_);
+        draw_length_tick_for(*plan.difference);
     }
     if (plan.sum) {
         polarplot::draw_vector("A + B", *plan.sum, plan.convention, marker_style_,
                                /*head_frac=*/0.12, line_width_);
+        draw_length_tick_for(*plan.sum);
     }
     if (plan.difference_ba) {
         polarplot::draw_vector("B - A", *plan.difference_ba, plan.convention, marker_style_,
                                /*head_frac=*/0.12, line_width_);
+        draw_length_tick_for(*plan.difference_ba);
     }
     if (plan.product) {
         polarplot::draw_vector("A x B", *plan.product, plan.convention, marker_style_,
                                /*head_frac=*/0.12, line_width_);
+        draw_length_tick_for(*plan.product);
     }
     if (plan.quotient_ab) {
         polarplot::draw_vector("A / B", *plan.quotient_ab, plan.convention, marker_style_,
                                /*head_frac=*/0.12, line_width_);
+        draw_length_tick_for(*plan.quotient_ab);
     }
     if (plan.quotient_ba) {
         polarplot::draw_vector("B / A", *plan.quotient_ba, plan.convention, marker_style_,
                                /*head_frac=*/0.12, line_width_);
+        draw_length_tick_for(*plan.quotient_ba);
     }
     // Positional ids: fine because draw_annotation_vector's id is never shown
     // (see polar_plot.hpp), only needs to be unique per frame, and

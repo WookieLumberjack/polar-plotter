@@ -44,10 +44,18 @@ list(APPEND CMAKE_MODULE_PATH "${catch2_SOURCE_DIR}/extras")
 
 # ---------------------------------------------------------------------------
 # Dear ImGui - no upstream CMake, so we compile it ourselves.
+#
+# Pinned to the `docking` branch's v1.92.9b-docking tag (not master's plain
+# v1.92.9b) so panels can dock into a real dockspace (#57/#58); see
+# docs/adr/0003-pin-imgui-to-docking-branch.md for the rationale and
+# trade-offs of moving off a stable release tag onto a moving branch.
+# `v1.92.9b-docking` is a real tag (ocornut cuts a matching `-docking` tag for
+# every release), so GIT_SHALLOW TRUE still works -- shallow fetches need an
+# advertised ref, not a bare SHA.
 # ---------------------------------------------------------------------------
 FetchContent_Declare(imgui
     GIT_REPOSITORY https://github.com/ocornut/imgui.git
-    GIT_TAG v1.92.9b
+    GIT_TAG v1.92.9b-docking
     GIT_SHALLOW TRUE)
 FetchContent_MakeAvailable(imgui)
 
@@ -101,3 +109,42 @@ add_library(implot::implot ALIAS implot)
 if(NOT MSVC)
     target_compile_options(implot PRIVATE -w)
 endif()
+
+# ---------------------------------------------------------------------------
+# JetBrains Mono - the app's default (and only) font, embedded at build time.
+#
+# Fetched as a release zip (font source has no upstream CMake, and there's
+# nothing to build -- just an asset to unpack), pinned to release v2.304 by
+# URL + SHA256, same "exact version, verifiable" spirit as the git-tag pins
+# above. OFL-1.1 licensed. See #60.
+# ---------------------------------------------------------------------------
+FetchContent_Declare(jetbrains_mono
+    URL https://github.com/JetBrains/JetBrainsMono/releases/download/v2.304/JetBrainsMono-2.304.zip
+    URL_HASH SHA256=6f6376c6ed2960ea8a963cd7387ec9d76e3f629125bc33d1fdcd7eb7012f7bbf)
+FetchContent_MakeAvailable(jetbrains_mono)
+
+# `binary_to_compressed_c` is a small, dependency-free host tool bundled with
+# Dear ImGui (misc/fonts/) that turns a TTF into a compressed C byte array,
+# so the font ships embedded in the binary with no runtime file I/O. It's a
+# build-host tool, not part of the app -- no warnings policy, no ImGui link.
+add_executable(binary_to_compressed_c ${imgui_SOURCE_DIR}/misc/fonts/binary_to_compressed_c.cpp)
+if(NOT MSVC)
+    target_compile_options(binary_to_compressed_c PRIVATE -w)
+endif()
+
+# Deliberately *not* -base85: base85 emits the font as one giant adjacent-
+# concatenated C string literal, which trips first-party code's
+# -Wpedantic -Werror (-Woverlength-strings; ISO C++ only requires compilers
+# to support 65536-char string literals, and this font's is far longer). The
+# plain compressed byte array has no such limit, at the cost of a slightly
+# larger generated source file. Paired with AddFontFromMemoryCompressedTTF
+# (no "Base85") below.
+set(jetbrains_mono_header "${CMAKE_BINARY_DIR}/generated/jetbrains_mono_medium.h")
+add_custom_command(
+    OUTPUT ${jetbrains_mono_header}
+    COMMAND binary_to_compressed_c
+            "${jetbrains_mono_SOURCE_DIR}/fonts/ttf/JetBrainsMono-Medium.ttf"
+            JetBrainsMonoMedium > ${jetbrains_mono_header}
+    DEPENDS binary_to_compressed_c "${jetbrains_mono_SOURCE_DIR}/fonts/ttf/JetBrainsMono-Medium.ttf"
+    VERBATIM)
+add_custom_target(generate_jetbrains_mono_header DEPENDS ${jetbrains_mono_header})

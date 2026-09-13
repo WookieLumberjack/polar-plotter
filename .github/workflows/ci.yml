@@ -88,6 +88,13 @@ jobs:
       - name: Configure (for compile_commands.json)
         run: cmake --preset debug
 
+      - name: Generate build-time headers (for clang-tidy)
+        # clang-tidy parses each TU against compile_commands.json without
+        # actually building, so generated headers -- e.g. the JetBrains Mono
+        # font header main.cpp includes (see cmake/Dependencies.cmake) --
+        # still need to exist on disk first, or clang-tidy fails to find them.
+        run: cmake --build --preset debug --target generate_jetbrains_mono_header
+
       - name: clang-format
         run: git ls-files '*.cpp' '*.hpp' | xargs clang-format-21 --dry-run --Werror
 

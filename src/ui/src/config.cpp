@@ -37,6 +37,40 @@ std::string_view trim(std::string_view s) {
 
 bool as_bool(std::string_view v) { return v == "1" || v == "true"; }
 
+// theme= serializes/parses as the enum's name (e.g. "slate"), not a number --
+// numbers would silently shift meaning if Theme's declaration order ever
+// changes. An unrecognized name (including from a future version's theme
+// this build doesn't know) falls back to Config's default, same as any other
+// unrecognized/missing key.
+std::string_view theme_name(Theme theme) {
+    switch (theme) {
+        case Theme::kSlate:
+            return "slate";
+        case Theme::kMidnight:
+            return "midnight";
+        case Theme::kPaper:
+            return "paper";
+        case Theme::kNordLight:
+            return "nord_light";
+        case Theme::kMint:
+            return "mint";
+    }
+    return "slate";
+}
+
+// Derived from kAllThemes/theme_name rather than its own independent
+// if-chain, so a theme added to kAllThemes without a matching entry here
+// fails loudly (round-trip test breaks) instead of silently parsing as
+// std::nullopt (falls back to default) forever.
+std::optional<Theme> parse_theme(std::string_view value) {
+    for (const Theme candidate : kAllThemes) {
+        if (theme_name(candidate) == value) {
+            return candidate;
+        }
+    }
+    return std::nullopt;
+}
+
 // key -> pointer to the field it sets, for the flat key=value fields that
 // just need parsing (or bool conversion) and assignment. a.x/a.y/b.x/b.y are
 // handled separately below since they address into Config::a/b's elements
@@ -91,6 +125,12 @@ void apply(Config& cfg, std::string_view key, std::string_view value) {
     }
     if (key == "auto_scale") {
         cfg.auto_scale = as_bool(value);
+        return;
+    }
+    if (key == "theme") {
+        if (const auto v = parse_theme(value)) {
+            cfg.theme = *v;
+        }
         return;
     }
     for (const BoolField& f : kBoolFields) {
@@ -152,6 +192,7 @@ bool save_config(const std::filesystem::path& path, const Config& config) {
     out << "line_width=" << config.line_width << '\n';
     out << "auto_scale=" << (config.auto_scale ? 1 : 0) << '\n';
     out << "manual_ring_interval=" << config.manual_ring_interval << '\n';
+    out << "theme=" << theme_name(config.theme) << '\n';
     return out.good();
 }
 
