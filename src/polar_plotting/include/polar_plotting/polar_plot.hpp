@@ -202,9 +202,19 @@ struct RulerTick {
 /// minor ticks between them (see \ref minor_ruler_ticks), computed from
 /// \p frame's \c ring_interval and \c ring_count -- callers must pass the
 /// same \p frame to \ref draw_polar_grid and \ref draw_rotation_indicator
-/// this frame so the ruler and the grid never disagree. Returns true when
-/// the plot is visible; call \ref end_vector_plot exactly once iff this
-/// returned true (mirrors ImPlot::BeginPlot).
+/// this frame so the ruler and the grid never disagree. Also configures the
+/// legend (\c ImPlot::SetupLegend) with \c ImPlotLegendFlags_NoButtons --
+/// visibility is controlled solely by the side panel's checkboxes, so legend
+/// click-to-hide is disabled entirely (#71; this also means A and B, which
+/// have no checkbox, can never be hidden) -- and
+/// \c ImPlotLegendFlags_NoHighlightAxis, suppressing ImPlot's default
+/// highlight-the-Y2-ruler-on-hover behavior. The hover-bold effect on a
+/// legend entry itself is kept, and extended to that vector's arrowhead (see
+/// \ref draw_arrow's \c plot_arrow_shape) and tip marker (see
+/// \ref draw_vector's \c draw_tip_marker) so shaft/arrowhead/marker bold
+/// together as one visual unit. Returns true when the plot is visible; call
+/// \ref end_vector_plot exactly once iff this returned true (mirrors
+/// ImPlot::BeginPlot).
 [[nodiscard]] bool begin_vector_plot(const char* title, PlotFrame frame);
 
 /// End a plot begun with \ref begin_vector_plot.

@@ -66,6 +66,19 @@ void plot_arrow_shape(const std::string& shaft_id, const std::string& head_id, P
         return;
     }
 
+    // Extend ImPlot's legend hover-bold effect (already applied automatically
+    // to the shaft item itself, since that's a real legend entry) to the
+    // arrowhead, which is a separate `##`-prefixed ImPlot item with no legend
+    // entry of its own and therefore doesn't participate in that automatic
+    // scaling on its own -- #71. Matches ImPlot's own internal
+    // ITEM_HIGHLIGHT_LINE_SCALE. shaft_id is only ever a real (non `##`)
+    // legend entry for a named vector's own shaft (see draw_arrow); an
+    // annotation's `##`-prefixed shaft_id never has a legend entry, so this
+    // is always false for annotations.
+    constexpr float kHoverLineScale = 2.0F;
+    const float head_thickness =
+        ImPlot::IsLegendEntryHovered(shaft_id.c_str()) ? thickness * kHoverLineScale : thickness;
+
     const ImVec2 pixel_tail = ImPlot::PlotToPixels(tail.x, tail.y);
     const ImVec2 pixel_head = ImPlot::PlotToPixels(head.x, head.y);
     const double shaft_length_px = std::hypot(static_cast<double>(pixel_head.x - pixel_tail.x),
@@ -78,7 +91,7 @@ void plot_arrow_shape(const std::string& shaft_id, const std::string& head_id, P
     const std::array<double, 3> hy{wings.first.y, head.y, wings.second.y};
 
     ImPlot::PlotLine(head_id.c_str(), hx.data(), hy.data(), 3,
-                     arrow_line_spec(&resolved_color, thickness));
+                     arrow_line_spec(&resolved_color, head_thickness));
 }
 
 }  // namespace
@@ -235,6 +248,17 @@ bool begin_vector_plot(const char* title, PlotFrame frame) {
     // gridlines entirely rather than just hiding the labels.
     constexpr ImPlotAxisFlags kAxisFlags = ImPlotAxisFlags_NoDecorations;
     ImPlot::SetupAxes("x", "y", kAxisFlags, kAxisFlags);
+    // NoButtons: legend visibility is controlled solely by the side panel's
+    // checkboxes -- click-to-hide would duplicate that control and, for A/B
+    // (which have no checkbox), would let a vector be hidden with no way to
+    // bring it back. NoHighlightAxis: suppress ImPlot's default
+    // highlight-hovered-legend-entry's-axis behavior (the Y2 ruler lighting
+    // up to match the hovered entry's color reads as an unrelated part of the
+    // window changing). Location matches ImPlot's own default
+    // (ImPlotLocation_NorthWest) -- only the flags are new (#71).
+    constexpr ImPlotLegendFlags kLegendFlags =
+        ImPlotLegendFlags_NoButtons | ImPlotLegendFlags_NoHighlightAxis;
+    ImPlot::SetupLegend(ImPlotLocation_NorthWest, kLegendFlags);
     const AxisHalfRanges half_ranges = axis_half_ranges(static_cast<double>(canvas_size.x),
                                                         static_cast<double>(canvas_size.y), extent);
     // Re-apply every frame (ImPlotCond_Always) so leftover pan/zoom state
@@ -383,7 +407,16 @@ void draw_tip_marker(const char* label, Point tip, TipMarkerStyle marker_style,
     const std::string id = std::string("##tip_") + label;
     const ImPlotMarker marker =
         (marker_style == TipMarkerStyle::kCrossHair) ? ImPlotMarker_Cross : ImPlotMarker_Circle;
-    ImPlotSpec spec{ImPlotProp_Marker, marker, ImPlotProp_MarkerSize, kMarkerSize};
+    // Extend the legend hover-bold effect to the tip marker too, which
+    // (like the arrowhead in plot_arrow_shape) is a separate `##`-prefixed
+    // item with no legend entry of its own -- #71. Matches ImPlot's own
+    // internal ITEM_HIGHLIGHT_MARK_SCALE. \p label is the vector's shaft's
+    // own legend-entry id (see draw_arrow), so this stays in sync with the
+    // shaft's own (automatic) and the arrowhead's (plot_arrow_shape) bolding.
+    constexpr float kHoverMarkerScale = 1.25F;
+    const float marker_size =
+        ImPlot::IsLegendEntryHovered(label) ? kMarkerSize * kHoverMarkerScale : kMarkerSize;
+    ImPlotSpec spec{ImPlotProp_Marker, marker, ImPlotProp_MarkerSize, marker_size};
     if (marker_color != nullptr) {
         const ImVec4 color(marker_color->r, marker_color->g, marker_color->b, marker_color->a);
         spec.MarkerFillColor = color;
