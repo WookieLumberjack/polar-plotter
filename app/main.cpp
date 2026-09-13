@@ -110,6 +110,12 @@ int main() {
     ImGui::CreateContext();
     ImPlot::CreateContext();
     ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    // Restrict window-move to the title bar: the polar plot's tip drag (see
+    // #44/#48) is hand-rolled directly over the plot body with no widget of
+    // its own claiming the mouse, so with the default (drag-anywhere-in-body
+    // moves the window) a tip drag would fall through and move the "Polar
+    // plot" window instead of the vector.
+    ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
 
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glsl_version);
