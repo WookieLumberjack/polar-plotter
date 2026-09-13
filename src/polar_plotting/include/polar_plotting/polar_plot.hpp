@@ -436,6 +436,13 @@ struct PixelRect {
 /// Pure function -- the test seam for this clamp.
 [[nodiscard]] Point clamp_to_rect(Point p, PixelRect rect);
 
+/// Whether \p p lies within \p rect, inclusive of its edges (matching
+/// \ref clamp_to_rect's boundary convention). Argument order matches
+/// \ref clamp_to_rect (point first, rect second) so the two read as a
+/// matched pair. Used by \ref hover_target for its pixel-rect containment
+/// check. Pure function -- the test seam for this predicate.
+[[nodiscard]] bool point_in_rect(Point p, PixelRect rect);
+
 /// Result of \ref draw_interactive_vector: \p head is the vector's head this
 /// frame, in the same math-convention space \ref draw_vector's \p head
 /// parameter takes (updated live while dragging via \ref from_plotted_point;

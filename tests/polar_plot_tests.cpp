@@ -682,3 +682,36 @@ TEST_CASE("clamp_to_rect clamps each axis independently", "[polar_plot][interact
     REQUIRE_THAT(clamped.x, WithinAbs(100.0, 1e-12));
     REQUIRE_THAT(clamped.y, WithinAbs(100.0, 1e-12));
 }
+
+// #83: hover_target's pixel-rect containment check, extracted as a pure,
+// tested predicate mirroring clamp_to_rect's (Point, PixelRect) argument
+// order so the two read as a matched pair.
+TEST_CASE("point_in_rect reports a point strictly inside the rect as true",
+          "[polar_plot][interaction]") {
+    constexpr polarplot::PixelRect rect{/*min=*/{0.0, 0.0}, /*max=*/{100.0, 200.0}};
+    CHECK(polarplot::point_in_rect({50.0, 150.0}, rect));
+}
+
+TEST_CASE(
+    "point_in_rect reports a point strictly outside the rect on each axis independently as "
+    "false",
+    "[polar_plot][interaction]") {
+    constexpr polarplot::PixelRect rect{/*min=*/{0.0, 0.0}, /*max=*/{100.0, 200.0}};
+
+    CHECK_FALSE(polarplot::point_in_rect({-50.0, 100.0}, rect));
+    CHECK_FALSE(polarplot::point_in_rect({150.0, 100.0}, rect));
+    CHECK_FALSE(polarplot::point_in_rect({50.0, -20.0}, rect));
+    CHECK_FALSE(polarplot::point_in_rect({50.0, 250.0}, rect));
+}
+
+TEST_CASE(
+    "point_in_rect treats each edge as inclusive, matching clamp_to_rect's boundary "
+    "convention",
+    "[polar_plot][interaction]") {
+    constexpr polarplot::PixelRect rect{/*min=*/{0.0, 0.0}, /*max=*/{100.0, 200.0}};
+
+    CHECK(polarplot::point_in_rect({0.0, 100.0}, rect));
+    CHECK(polarplot::point_in_rect({100.0, 100.0}, rect));
+    CHECK(polarplot::point_in_rect({50.0, 0.0}, rect));
+    CHECK(polarplot::point_in_rect({50.0, 200.0}, rect));
+}

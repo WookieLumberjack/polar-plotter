@@ -509,9 +509,12 @@ HoverTarget hover_target(Point head_a, Point head_b, AngleConvention convention)
     const ImVec2 plot_min_px = ImPlot::GetPlotPos();
     const ImVec2 plot_size_px = ImPlot::GetPlotSize();
     const ImVec2 mouse_px = ImGui::GetMousePos();
-    const bool mouse_in_plot_rect =
-        mouse_px.x >= plot_min_px.x && mouse_px.x <= plot_min_px.x + plot_size_px.x &&
-        mouse_px.y >= plot_min_px.y && mouse_px.y <= plot_min_px.y + plot_size_px.y;
+    const PixelRect plot_rect{
+        /*min=*/{static_cast<double>(plot_min_px.x), static_cast<double>(plot_min_px.y)},
+        /*max=*/{static_cast<double>(plot_min_px.x + plot_size_px.x),
+                 static_cast<double>(plot_min_px.y + plot_size_px.y)}};
+    const bool mouse_in_plot_rect = point_in_rect(
+        {static_cast<double>(mouse_px.x), static_cast<double>(mouse_px.y)}, plot_rect);
     const bool plot_hovered =
         mouse_in_plot_rect &&
         ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows |
@@ -550,6 +553,10 @@ Point clamp_to_extent(Point p, double extent) {
 
 Point clamp_to_rect(Point p, PixelRect rect) {
     return {std::clamp(p.x, rect.min.x, rect.max.x), std::clamp(p.y, rect.min.y, rect.max.y)};
+}
+
+bool point_in_rect(Point p, PixelRect rect) {
+    return p.x >= rect.min.x && p.x <= rect.max.x && p.y >= rect.min.y && p.y <= rect.max.y;
 }
 
 InteractiveVectorResult draw_interactive_vector(
