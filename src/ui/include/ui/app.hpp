@@ -104,6 +104,11 @@ private:
     // jump, once the drag ends.
     polarplot::PlotFrame drag_frozen_extent_{1.0, kAutoFitRings};
 
+    // Full-viewport invisible host window + ImGui::DockSpace(); builds the
+    // first-run default layout (Polar plot right 2/3, Vectors left 1/3) via
+    // DockBuilder the first time the dockspace node doesn't exist yet, then
+    // leaves layout entirely to the user (persisted via imgui.ini).
+    static void draw_dockspace_host();
     void draw_controls();
     // Non-const: click-dragging a vector's tip (see #44/#48) writes the
     // updated position (and discards any in-progress Amplitude/Phase text

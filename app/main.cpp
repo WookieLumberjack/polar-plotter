@@ -110,11 +110,19 @@ int main() {
     ImGui::CreateContext();
     ImPlot::CreateContext();
     ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    // Docking branch (see docs/adr/0003-pin-imgui-to-docking-branch.md):
+    // lets the "Vectors"/"Polar plot" windows dock into ui::App's dockspace
+    // instead of floating freely.
+    ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     // Restrict window-move to the title bar: the polar plot's tip drag (see
     // #44/#48) is hand-rolled directly over the plot body with no widget of
     // its own claiming the mouse, so with the default (drag-anywhere-in-body
     // moves the window) a tip drag would fall through and move the "Polar
-    // plot" window instead of the vector.
+    // plot" window instead of the vector. Still holds with docking enabled:
+    // a docked tab's own drag-to-move/drag-to-dock affordance is its tab,
+    // which is part of the title-bar area this flag already restricts
+    // window-move to, not the plot body itself (re-verified manually, see
+    // #58).
     ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
 
     ImGui_ImplGlfw_InitForOpenGL(window, true);

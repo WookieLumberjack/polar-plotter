@@ -44,10 +44,18 @@ list(APPEND CMAKE_MODULE_PATH "${catch2_SOURCE_DIR}/extras")
 
 # ---------------------------------------------------------------------------
 # Dear ImGui - no upstream CMake, so we compile it ourselves.
+#
+# Pinned to the `docking` branch's v1.92.9b-docking tag (not master's plain
+# v1.92.9b) so panels can dock into a real dockspace (#57/#58); see
+# docs/adr/0003-pin-imgui-to-docking-branch.md for the rationale and
+# trade-offs of moving off a stable release tag onto a moving branch.
+# `v1.92.9b-docking` is a real tag (ocornut cuts a matching `-docking` tag for
+# every release), so GIT_SHALLOW TRUE still works -- shallow fetches need an
+# advertised ref, not a bare SHA.
 # ---------------------------------------------------------------------------
 FetchContent_Declare(imgui
     GIT_REPOSITORY https://github.com/ocornut/imgui.git
-    GIT_TAG v1.92.9b
+    GIT_TAG v1.92.9b-docking
     GIT_SHALLOW TRUE)
 FetchContent_MakeAvailable(imgui)
 

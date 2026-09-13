@@ -10,6 +10,7 @@
 #include <utility>
 
 #include <imgui.h>
+#include <imgui_internal.h>  // DockBuilder* -- no public API for the first-run default layout.
 #include <implot.h>
 
 #include "polar_plotting/polar_plot.hpp"
@@ -194,29 +195,67 @@ void App::save() const {
     (void)save_config(config_path_, cfg);
 }
 
-void App::render() {
-    // A simple side-by-side default layout; the user can move/resize freely and
-    // ImGui remembers it in imgui.ini afterwards.
+void App::draw_dockspace_host() {
     const ImGuiViewport* vp = ImGui::GetMainViewport();
-    const float pad = 16.0F;
-    const float controls_w = 380.0F;
+    ImGui::SetNextWindowPos(vp->WorkPos);
+    ImGui::SetNextWindowSize(vp->WorkSize);
+    ImGui::SetNextWindowViewport(vp->ID);
+
+    // Standard invisible-dockspace-host window: fills the viewport, has no
+    // chrome of its own, and never becomes a dockable node itself (only its
+    // DockSpace() child area is). ImGuiWindowFlags_MenuBar is reserved here
+    // (unused for now) so a later ticket adding the actual menu bar doesn't
+    // need to touch this window's flags again.
+    constexpr ImGuiWindowFlags kHostFlags =
+        ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar |
+        ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus |
+        ImGuiWindowFlags_NoBackground;
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0F);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0F);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0F, 0.0F));
+    ImGui::Begin("##dockspace_host", nullptr, kHostFlags);
+    ImGui::PopStyleVar(3);
+
+    const ImGuiID dockspace_id = ImGui::GetID("MainDockSpace");
+
+    // First run only: ImGui::DockBuilderGetNode returns null until a node
+    // with this ID has been built at least once (either by us, here, or by
+    // ImGui restoring one from a prior imgui.ini). Once it exists, layout is
+    // entirely user-driven and persisted via imgui.ini -- we never rebuild
+    // it again after this.
+    if (ImGui::DockBuilderGetNode(dockspace_id) == nullptr) {
+        ImGui::DockBuilderAddNode(dockspace_id, ImGuiDockNodeFlags_DockSpace);
+        ImGui::DockBuilderSetNodeSize(dockspace_id, vp->WorkSize);
+
+        ImGuiID left_id = 0;
+        ImGuiID right_id = 0;
+        ImGui::DockBuilderSplitNode(dockspace_id, ImGuiDir_Left, 1.0F / 3.0F, &left_id, &right_id);
+        ImGui::DockBuilderDockWindow("Vectors", left_id);
+        ImGui::DockBuilderDockWindow("Polar plot", right_id);
+        ImGui::DockBuilderFinish(dockspace_id);
+    }
+
+    ImGui::DockSpace(dockspace_id);
+    ImGui::End();
+}
+
+void App::render() {
+    draw_dockspace_host();
 
     // Plot drawn first: dragging a tip (see #44/#48) writes the updated
     // position straight back into a_/b_ inside draw_plot(), so drawing the
     // plot before the controls window lets that same frame's Amplitude/
     // Phase/Real/Imag fields and derived-vectors table read the fresh
     // position -- window Begin/End order doesn't otherwise matter to either
-    // window's own widgets.
-    ImGui::SetNextWindowPos({vp->WorkPos.x + controls_w + (2 * pad), vp->WorkPos.y + pad},
-                            ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize({vp->WorkSize.x - controls_w - (3 * pad), vp->WorkSize.y - (2 * pad)},
-                             ImGuiCond_FirstUseEver);
+    // window's own widgets. Both windows dock into the host's DockSpace by
+    // name (see draw_dockspace_host); no explicit position/size is set here
+    // any more -- the dockspace and, on first run, DockBuilder own that.
     ImGui::Begin("Polar plot");
     draw_plot();
     ImGui::End();
 
-    ImGui::SetNextWindowPos({vp->WorkPos.x + pad, vp->WorkPos.y + pad}, ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize({controls_w, vp->WorkSize.y - (2 * pad)}, ImGuiCond_FirstUseEver);
     ImGui::Begin("Vectors");
     draw_controls();
     ImGui::End();
