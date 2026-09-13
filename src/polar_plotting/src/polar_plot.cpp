@@ -348,7 +348,25 @@ HoverTarget hover_hit_test(Point mouse, Point tip_a, Point tip_b, double hit_rad
 }
 
 HoverTarget hover_target(Point head_a, Point head_b, AngleConvention convention) {
-    if (!ImPlot::IsPlotHovered()) {
+    // Not ImPlot::IsPlotHovered(): that relies on ImPlot's own per-frame
+    // UpdateInput() pass to set plot.Hovered, which is skipped entirely
+    // when kPlotFlags (see begin_vector_plot) carries ImPlotFlags_NoInputs
+    // (disabling ImPlot's built-in pan/zoom) -- so IsPlotHovered() would
+    // always report false here. GetPlotPos()/GetPlotSize() are computed
+    // earlier in ImPlot's per-frame setup, before that gate, so a manual
+    // rect containment check (mirroring ImPlot's own FrameHovered pattern
+    // for subplots) works regardless of NoInputs.
+    const ImVec2 plot_min_px = ImPlot::GetPlotPos();
+    const ImVec2 plot_size_px = ImPlot::GetPlotSize();
+    const ImVec2 mouse_px = ImGui::GetMousePos();
+    const bool mouse_in_plot_rect =
+        mouse_px.x >= plot_min_px.x && mouse_px.x <= plot_min_px.x + plot_size_px.x &&
+        mouse_px.y >= plot_min_px.y && mouse_px.y <= plot_min_px.y + plot_size_px.y;
+    const bool plot_hovered =
+        mouse_in_plot_rect &&
+        ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows |
+                               ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+    if (!plot_hovered) {
         return HoverTarget::kNone;
     }
 
