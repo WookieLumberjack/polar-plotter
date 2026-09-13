@@ -1,4 +1,5 @@
 #include <optional>
+#include <string>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -513,6 +514,104 @@ TEST_CASE(
     const PlotPlan plan = ui::plan_plot(inputs);
     const PlotFrame expected = ui::auto_fit_extent(inputs);
     CHECK_THAT(plan.extent.ring_interval(), WithinRel(expected.ring_interval()));
+}
+
+TEST_CASE("derived_vectors: order contract across representative toggle combinations",
+          "[plot_plan]") {
+    SECTION("none shown: derived_vectors is empty") {
+        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA, .b = kB});
+        CHECK(plan.derived_vectors.empty());
+    }
+
+    SECTION(
+        "all six shown: fixed order difference, sum, difference_ba, product, quotient_ab, "
+        "quotient_ba -- matching App::draw_plot's draw order, not plan_plot's computation "
+        "order") {
+        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA,
+                                                       .b = kB,
+                                                       .show_sum = true,
+                                                       .show_difference = true,
+                                                       .show_difference_ba = true,
+                                                       .show_product = true,
+                                                       .show_quotient_ab = true,
+                                                       .show_quotient_ba = true});
+
+        const Vec2 sum = kA + kB;
+        const Vec2 diff = kA - kB;
+        const Vec2 diff_ba = kB - kA;
+        const Vec2 product = vecmath::complex_multiply(kA, kB);
+        const Vec2 quotient_ab = require_value(vecmath::complex_divide(kA, kB));
+        const Vec2 quotient_ba = require_value(vecmath::complex_divide(kB, kA));
+
+        REQUIRE(plan.derived_vectors.size() == 6);
+        CHECK(std::string(plan.derived_vectors[0].label) == "A - B");
+        CHECK(points_equal(plan.derived_vectors[0].point, {diff.x, diff.y}));
+        CHECK(std::string(plan.derived_vectors[1].label) == "A + B");
+        CHECK(points_equal(plan.derived_vectors[1].point, {sum.x, sum.y}));
+        CHECK(std::string(plan.derived_vectors[2].label) == "B - A");
+        CHECK(points_equal(plan.derived_vectors[2].point, {diff_ba.x, diff_ba.y}));
+        CHECK(std::string(plan.derived_vectors[3].label) == "A x B");
+        CHECK(points_equal(plan.derived_vectors[3].point, {product.x, product.y}));
+        CHECK(std::string(plan.derived_vectors[4].label) == "A / B");
+        CHECK(points_equal(plan.derived_vectors[4].point, {quotient_ab.x, quotient_ab.y}));
+        CHECK(std::string(plan.derived_vectors[5].label) == "B / A");
+        CHECK(points_equal(plan.derived_vectors[5].point, {quotient_ba.x, quotient_ba.y}));
+    }
+
+    SECTION("only show_difference_ba on: single entry, B - A") {
+        const PlotPlan plan =
+            ui::plan_plot(PlotInputs{.a = kA, .b = kB, .show_difference_ba = true});
+        const Vec2 expected = kB - kA;
+        REQUIRE(plan.derived_vectors.size() == 1);
+        CHECK(std::string(plan.derived_vectors[0].label) == "B - A");
+        CHECK(points_equal(plan.derived_vectors[0].point, {expected.x, expected.y}));
+    }
+
+    SECTION("only show_product on: single entry, A x B") {
+        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA, .b = kB, .show_product = true});
+        const Vec2 expected = vecmath::complex_multiply(kA, kB);
+        REQUIRE(plan.derived_vectors.size() == 1);
+        CHECK(std::string(plan.derived_vectors[0].label) == "A x B");
+        CHECK(points_equal(plan.derived_vectors[0].point, {expected.x, expected.y}));
+    }
+
+    SECTION("only show_quotient_ab on: single entry, A / B") {
+        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA, .b = kB, .show_quotient_ab = true});
+        const Vec2 expected = require_value(vecmath::complex_divide(kA, kB));
+        REQUIRE(plan.derived_vectors.size() == 1);
+        CHECK(std::string(plan.derived_vectors[0].label) == "A / B");
+        CHECK(points_equal(plan.derived_vectors[0].point, {expected.x, expected.y}));
+    }
+
+    SECTION("only show_quotient_ba on: single entry, B / A") {
+        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA, .b = kB, .show_quotient_ba = true});
+        const Vec2 expected = require_value(vecmath::complex_divide(kB, kA));
+        REQUIRE(plan.derived_vectors.size() == 1);
+        CHECK(std::string(plan.derived_vectors[0].label) == "B / A");
+        CHECK(points_equal(plan.derived_vectors[0].point, {expected.x, expected.y}));
+    }
+
+    SECTION("show_quotient_ab on but B is zero: quotient stays absent from derived_vectors too") {
+        const PlotPlan plan =
+            ui::plan_plot(PlotInputs{.a = kA, .b = Vec2{0.0, 0.0}, .show_quotient_ab = true});
+        CHECK(plan.derived_vectors.empty());
+    }
+
+    SECTION("only show_sum on: single entry, A + B") {
+        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA, .b = kB, .show_sum = true});
+        const Vec2 expected = kA + kB;
+        REQUIRE(plan.derived_vectors.size() == 1);
+        CHECK(std::string(plan.derived_vectors[0].label) == "A + B");
+        CHECK(points_equal(plan.derived_vectors[0].point, {expected.x, expected.y}));
+    }
+
+    SECTION("only show_difference on: single entry, A - B") {
+        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA, .b = kB, .show_difference = true});
+        const Vec2 expected = kA - kB;
+        REQUIRE(plan.derived_vectors.size() == 1);
+        CHECK(std::string(plan.derived_vectors[0].label) == "A - B");
+        CHECK(points_equal(plan.derived_vectors[0].point, {expected.x, expected.y}));
+    }
 }
 
 TEST_CASE("rotation indicator: plan_plot derives a plain sweep sign from rotation_direction alone",

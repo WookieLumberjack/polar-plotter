@@ -544,41 +544,13 @@ void App::draw_plot() {
     }
     apply_interactive_result(a_, a_result);
     apply_interactive_result(b_, b_result);
-    if (plan.difference) {
-        const polarplot::MarkerColor color = vector_color("A - B");
-        polarplot::draw_vector("A - B", *plan.difference, plan.convention, marker_style_,
+    // PlotPlan::derived_vectors' push order is a documented contract (see
+    // plot_plan.cpp) matching this loop's draw/legend order.
+    for (const PlotPlan::DerivedVector& derived : plan.derived_vectors) {
+        const polarplot::MarkerColor color = vector_color(derived.label);
+        polarplot::draw_vector(derived.label, derived.point, plan.convention, marker_style_,
                                line_width_, &tip_marker_color, &color);
-        draw_length_tick_for(*plan.difference);
-    }
-    if (plan.sum) {
-        const polarplot::MarkerColor color = vector_color("A + B");
-        polarplot::draw_vector("A + B", *plan.sum, plan.convention, marker_style_, line_width_,
-                               &tip_marker_color, &color);
-        draw_length_tick_for(*plan.sum);
-    }
-    if (plan.difference_ba) {
-        const polarplot::MarkerColor color = vector_color("B - A");
-        polarplot::draw_vector("B - A", *plan.difference_ba, plan.convention, marker_style_,
-                               line_width_, &tip_marker_color, &color);
-        draw_length_tick_for(*plan.difference_ba);
-    }
-    if (plan.product) {
-        const polarplot::MarkerColor color = vector_color("A x B");
-        polarplot::draw_vector("A x B", *plan.product, plan.convention, marker_style_, line_width_,
-                               &tip_marker_color, &color);
-        draw_length_tick_for(*plan.product);
-    }
-    if (plan.quotient_ab) {
-        const polarplot::MarkerColor color = vector_color("A / B");
-        polarplot::draw_vector("A / B", *plan.quotient_ab, plan.convention, marker_style_,
-                               line_width_, &tip_marker_color, &color);
-        draw_length_tick_for(*plan.quotient_ab);
-    }
-    if (plan.quotient_ba) {
-        const polarplot::MarkerColor color = vector_color("B / A");
-        polarplot::draw_vector("B / A", *plan.quotient_ba, plan.convention, marker_style_,
-                               line_width_, &tip_marker_color, &color);
-        draw_length_tick_for(*plan.quotient_ba);
+        draw_length_tick_for(derived.point);
     }
     // Positional ids: fine because draw_annotation_vector's id is never shown
     // (see polar_plot.hpp), only needs to be unique per frame, and
