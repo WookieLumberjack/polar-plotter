@@ -85,7 +85,21 @@ struct BoolField {
     bool Config::* field;
 };
 
+// a.x/a.y/b.x/b.y address into Config::a/b's elements rather than a whole
+// field, so they need the array member plus an index alongside the key.
+struct VecField {
+    std::string_view key;
+    std::array<float, 2> Config::* field;
+    std::size_t index;
+};
+
 void apply(Config& cfg, std::string_view key, std::string_view value) {
+    constexpr std::array<VecField, 4> kVecFields{{
+        {"a.x", &Config::a, 0},
+        {"a.y", &Config::a, 1},
+        {"b.x", &Config::b, 0},
+        {"b.y", &Config::b, 1},
+    }};
     constexpr std::array<BoolField, 6> kBoolFields{{
         {"show_sum", &Config::show_sum},
         {"show_difference", &Config::show_difference},
@@ -94,34 +108,17 @@ void apply(Config& cfg, std::string_view key, std::string_view value) {
         {"show_quotient_ab", &Config::show_quotient_ab},
         {"show_quotient_ba", &Config::show_quotient_ba},
     }};
-    constexpr std::array<FloatField, 3> kFloatFields{{
+    constexpr std::array<FloatField, 1> kFloatFields{{
         {"line_width", &Config::line_width},
-        {"manual_ring_interval", &Config::manual_ring_interval},
     }};
 
-    if (key == "a.x") {
-        if (const auto v = parse_float(value)) {
-            cfg.a[0] = *v;
+    for (const VecField& f : kVecFields) {
+        if (key == f.key) {
+            if (const auto v = parse_float(value)) {
+                (cfg.*f.field)[f.index] = *v;
+            }
+            return;
         }
-        return;
-    }
-    if (key == "a.y") {
-        if (const auto v = parse_float(value)) {
-            cfg.a[1] = *v;
-        }
-        return;
-    }
-    if (key == "b.x") {
-        if (const auto v = parse_float(value)) {
-            cfg.b[0] = *v;
-        }
-        return;
-    }
-    if (key == "b.y") {
-        if (const auto v = parse_float(value)) {
-            cfg.b[1] = *v;
-        }
-        return;
     }
     if (key == "auto_scale") {
         cfg.auto_scale = as_bool(value);
@@ -130,6 +127,18 @@ void apply(Config& cfg, std::string_view key, std::string_view value) {
     if (key == "theme") {
         if (const auto v = parse_theme(value)) {
             cfg.theme = *v;
+        }
+        return;
+    }
+    if (key == "manual_ring_interval") {
+        // Reaches polarplot::PlotFrame's constructor verbatim (via
+        // ui::plot_plan::manual_extent), which asserts a strictly positive
+        // ring_interval -- a non-positive on-disk value is hand-edited,
+        // external input, not a programmer error, so it's rejected here the
+        // same way an unparseable/unrecognized value is: falls back to
+        // Config's default instead of reaching that precondition (#37).
+        if (const auto v = parse_float(value); v && *v > 0.0F) {
+            cfg.manual_ring_interval = *v;
         }
         return;
     }

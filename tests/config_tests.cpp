@@ -1,6 +1,7 @@
 #include <filesystem>
 #include <fstream>
 #include <optional>
+#include <string_view>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -91,6 +92,32 @@ TEST_CASE("loading a config file that omits auto_scale/manual_ring_interval fall
     const Config loaded = require_value(load_config(path));
     CHECK(loaded.auto_scale == Config{}.auto_scale);
     CHECK(loaded.manual_ring_interval == Config{}.manual_ring_interval);
+
+    std::filesystem::remove(path);
+}
+
+TEST_CASE(
+    "loading a config file with a non-positive manual_ring_interval= value falls back to the "
+    "default",
+    "[config]") {
+    const std::filesystem::path path =
+        make_temp_path("polar_plotter_config_tests_manual_ring_interval_nonpositive.cfg");
+
+    // PlotFrame's constructor (see polarplot::PlotFrame) asserts a strictly
+    // positive ring_interval; manual_ring_interval reaches it verbatim via
+    // ui::plot_plan::manual_extent, so zero/negative on-disk values must
+    // never survive load_config (see #37).
+    const auto check_falls_back_to_default = [&](std::string_view value) {
+        {
+            std::ofstream out(path, std::ios::trunc);
+            out << "manual_ring_interval=" << value << '\n';
+        }
+        const Config loaded = require_value(load_config(path));
+        CHECK(loaded.manual_ring_interval == Config{}.manual_ring_interval);
+    };
+
+    check_falls_back_to_default("0");
+    check_falls_back_to_default("-1.5");
 
     std::filesystem::remove(path);
 }
