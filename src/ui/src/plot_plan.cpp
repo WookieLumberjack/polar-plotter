@@ -137,6 +137,7 @@ PlotPlan plan_plot(const PlotInputs& inputs) {
     plan.rotation_indicator_sweep_sign = rotation_sweep_sign(inputs.rotation_direction);
     plan.extent =
         inputs.auto_scale ? auto_fit_extent(inputs) : manual_extent(inputs.manual_ring_interval);
+    plan.auto_scale = inputs.auto_scale;
 
     // Push order below is part of PlotPlan's contract: when present, the
     // entries appear in this fixed order regardless of which toggles

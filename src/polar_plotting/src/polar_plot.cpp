@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdio>
 #include <numbers>
 #include <string>
@@ -726,6 +727,122 @@ void draw_rotation_indicator(PlotFrame frame, double sweep_sign, ArcStyle style)
     const ImVec4 color{style.r, style.g, style.b, style.a};
     ImPlot::Annotation(label.position.x, label.position.y, color, ImVec2(0.0F, 0.0F), false, "%s",
                        label.text.c_str());
+}
+
+namespace {
+
+// Convert an ImPlot-resolved color (from ImPlot::GetLastItemColor()) to a
+// MarkerColor, for handing a vector's just-drawn on-plot color straight into
+// draw_length_tick (see #62) -- so a length tick's color is always read off
+// the vector's actual drawn color, never independently assigned.
+MarkerColor to_marker_color(const ImVec4& color) { return {color.x, color.y, color.z, color.w}; }
+
+// Draw a length tick for a just-drawn vector: magnitude is always
+// std::hypot(x, y) of \p head's math-convention components -- never its
+// plotted y-coordinate -- and color is read off whatever item ImPlot last
+// drew (that vector's own shaft/arrowhead), reusing draw_vector's own
+// shaft/head color-sync trick (see plot_arrow_shape) so tick color is
+// guaranteed to match rather than independently assigned. Must be called
+// immediately after that vector's own draw call -- see draw_length_tick's own
+// doc comment -- which draw_scene's fixed call order enforces internally.
+void draw_length_tick_for(Point head) {
+    const double magnitude = std::hypot(head.x, head.y);
+    draw_length_tick(magnitude, to_marker_color(ImPlot::GetLastItemColor()));
+}
+
+}  // namespace
+
+std::optional<SceneResult> draw_scene(PlotFrame view_frame, const PlotPlan& plan,
+                                      const DrawStyle& style, bool a_was_dragging,
+                                      bool b_was_dragging) {
+    if (!begin_vector_plot("##polar", view_frame)) {
+        return std::nullopt;
+    }
+    draw_polar_grid(view_frame, plan.convention);
+
+    const double extent = view_frame.extent();
+
+    // Hover/click-drag for A/B (see #44/#47/#48): whichever tip is under the
+    // cursor is this frame's hit-test target; draw_interactive_vector turns
+    // that plus each vector's own carried-over dragging state into this
+    // frame's marker color, head position, and interaction state.
+    const HoverTarget hovered = hover_target(plan.a, plan.b, plan.convention);
+
+    // Manual-scale drag clamp (#44/#49): with auto-scale off, `extent`
+    // (this same PlotFrame's extent, already used above for the grid/axis
+    // view) never grows with the dragged vector's magnitude, so passing it
+    // through as the visible-extent clamp keeps a manual-scale drag from
+    // moving the tip past what's currently visible. Ignored while
+    // plan.auto_scale is true.
+    const MarkerColor color_a = style.color_for("A");
+    const MarkerColor color_b = style.color_for("B");
+    SceneResult result;
+    result.a = draw_interactive_vector("A", plan.a, plan.convention, style.marker_style,
+                                       hovered == HoverTarget::kA, a_was_dragging, style.line_width,
+                                       plan.auto_scale, extent, &style.tip_marker_color, &color_a);
+    draw_length_tick_for(result.a.head);
+    result.b = draw_interactive_vector("B", plan.b, plan.convention, style.marker_style,
+                                       hovered == HoverTarget::kB, b_was_dragging, style.line_width,
+                                       plan.auto_scale, extent, &style.tip_marker_color, &color_b);
+    draw_length_tick_for(result.b.head);
+
+    // PlotPlan::derived_vectors' push order is a documented contract (see
+    // PlotPlan's doc comment) matching this loop's draw/legend order.
+    for (const PlotPlan::DerivedVector& derived : plan.derived_vectors) {
+        const MarkerColor color = style.color_for(derived.label);
+        draw_vector(derived.label, derived.point, plan.convention, style.marker_style,
+                    style.line_width, &style.tip_marker_color, &color);
+        draw_length_tick_for(derived.point);
+    }
+
+    // Positional ids: fine because draw_annotation_vector's id is never shown
+    // (see its own doc comment), only needs to be unique per frame, and
+    // PlotPlan::tip_to_tail_annotations' push order is a documented contract
+    // (see PlotPlan's doc comment) -- not derived from branching here.
+    for (std::size_t i = 0; i < plan.tip_to_tail_annotations.size(); ++i) {
+        const std::string id = "tip_to_tail_" + std::to_string(i);
+        draw_annotation_vector(id.c_str(), plan.tip_to_tail_annotations[i], plan.convention,
+                               style.line_width);
+    }
+    if (plan.difference_segment) {
+        draw_annotation_vector("diff_segment_b_to_a_tip", *plan.difference_segment, plan.convention,
+                               style.line_width);
+    }
+    if (plan.difference_segment_ba) {
+        draw_annotation_vector("diff_segment_a_to_b_tip", *plan.difference_segment_ba,
+                               plan.convention, style.line_width);
+    }
+    if (plan.zero_direction_arc_angle) {
+        ArcStyle arc_style{};
+        arc_style.thickness = style.line_width;
+        const double zero_direction_arc_radius = extent * 0.85;
+        draw_angle_arc(zero_direction_arc_radius, *plan.zero_direction_arc_angle, arc_style);
+
+        // Short tick straddling the arc's start point (12 o'clock), marking
+        // it as the arc's reference point -- gated on the same condition as
+        // the arc itself, so it only ever appears while the arc does.
+        const ZeroDirectionTick tick = zero_direction_arc_tick(zero_direction_arc_radius, extent);
+        const std::array<double, 2> tick_x{tick.inner.x, tick.outer.x};
+        const std::array<double, 2> tick_y{tick.inner.y, tick.outer.y};
+        const ImPlotSpec tick_spec{ImPlotProp_LineWeight, style.line_width};
+        ImPlot::PlotLine("##zero_direction_tick", tick_x.data(), tick_y.data(), 2, tick_spec);
+    }
+
+    // Always drawn, right on the outer ring (as opposed to the zero-direction
+    // arc's slightly inset radius above) and centered on the plot's
+    // 3-o'clock reference rather than 12-o'clock, so it never visually
+    // overlaps that arc; distinct color reinforces the two are unrelated.
+    ArcStyle rotation_indicator_style{};
+    rotation_indicator_style.r = 0.2F;
+    rotation_indicator_style.g = 0.6F;
+    rotation_indicator_style.b = 1.0F;
+    rotation_indicator_style.a = 1.0F;
+    rotation_indicator_style.thickness = style.line_width;
+    draw_rotation_indicator(view_frame, plan.rotation_indicator_sweep_sign,
+                            rotation_indicator_style);
+
+    end_vector_plot();
+    return result;
 }
 
 }  // namespace polarplot

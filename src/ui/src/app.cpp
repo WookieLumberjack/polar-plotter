@@ -66,32 +66,12 @@ void draw_drag_tooltip(const char* label, polarplot::Point head) {
     ImGui::EndTooltip();
 }
 
-// Convert an ImPlot-resolved color (from ImPlot::GetLastItemColor()) to a
-// polarplot::MarkerColor, for handing a vector's just-drawn on-plot color
-// straight into polarplot::draw_length_tick (see #62) -- so a length tick's
-// color is always read off the vector's actual drawn color, never
-// independently assigned.
-polarplot::MarkerColor to_marker_color(const ImVec4& color) {
-    return {color.x, color.y, color.z, color.w};
-}
-
 // Convert a ThemeStyle's text color to a polarplot::MarkerColor, for use as
 // the default (idle-state) tip marker/label color override -- see #68: this
 // replaces polar_plotting's old hardcoded near-white default, so tip
 // markers/labels stay visible against light themes too.
 polarplot::MarkerColor to_marker_color(const ThemeColor& color) {
     return {color.r, color.g, color.b, color.a};
-}
-
-// Draw a length tick for a just-drawn vector: magnitude is always
-// std::hypot(x, y) of \p head's math-convention components -- never its
-// plotted y-coordinate -- and color is read off whatever item ImPlot last
-// drew (that vector's own shaft/arrowhead), reusing draw_vector's own
-// shaft/head color-sync trick (see polar_plot.cpp's plot_arrow_shape) so tick
-// color is guaranteed to match rather than independently assigned.
-void draw_length_tick_for(polarplot::Point head) {
-    const double magnitude = std::hypot(head.x, head.y);
-    polarplot::draw_length_tick(magnitude, to_marker_color(ImPlot::GetLastItemColor()));
 }
 
 }  // namespace
@@ -489,116 +469,34 @@ void App::draw_plot() {
     }
     const polarplot::PlotFrame& view_frame = drag_frozen_extent_;
 
-    // The grid's outer ring is drawn at exactly `view_frame.extent()` -- the
-    // same PlotFrame handed to begin_vector_plot and draw_rotation_indicator
-    // -- so the scale ruler's tick positions always land exactly on the
-    // rings they label (PlotFrame's constructor keeps the two in sync).
-    // begin_vector_plot inflates its own axis view a bit beyond that extent
-    // internally (rather than shrinking the grid inside an unchanged view,
-    // which would move the rings off the ruler's ticks) so the grid's spoke
-    // degree labels, drawn just outside the outer ring, have room without
-    // getting clipped.
-    const double extent = view_frame.extent();
-
-    if (!polarplot::begin_vector_plot("##polar", view_frame)) {
-        return;
-    }
-    polarplot::draw_polar_grid(view_frame, plan.convention);
-
     // Theme-aware default tip marker/label color (#68): applies to every
     // named vector's tip marker/label whenever no hover/drag override takes
     // precedence, so markers stay visible against light themes instead of
     // polar_plotting's old hardcoded near-white default.
-    const polarplot::MarkerColor tip_marker_color = to_marker_color(theme_style(theme_).text);
+    const polarplot::DrawStyle style{
+        .tip_marker_color = to_marker_color(theme_style(theme_).text),
+        .line_width = line_width_,
+        .marker_style = marker_style_,
+        .color_for = &vector_color,
+    };
 
-    // Hover/click-drag for A/B (see #44/#47/#48): whichever tip is under the
-    // cursor is this frame's hit-test target; draw_interactive_vector turns
-    // that plus each vector's own carried-over dragging state into this
-    // frame's marker color, head position, and interaction state.
-    const polarplot::HoverTarget hovered = polarplot::hover_target(plan.a, plan.b, plan.convention);
+    const std::optional<polarplot::SceneResult> result =
+        polarplot::draw_scene(view_frame, plan, style, a_.dragging_, b_.dragging_);
+    if (!result) {
+        return;
+    }
 
-    // Manual-scale drag clamp (#44/#49): with auto-scale off, `extent`
-    // (this same PlotFrame's extent, already used above for the grid/axis
-    // view) never grows with the dragged vector's magnitude, so passing it
-    // through as the visible-extent clamp keeps a manual-scale drag from
-    // moving the tip past what's currently visible. Ignored while
-    // auto_scale_ is true.
-    const polarplot::MarkerColor color_a = vector_color("A");
-    const polarplot::MarkerColor color_b = vector_color("B");
-    const polarplot::InteractiveVectorResult a_result = polarplot::draw_interactive_vector(
-        "A", plan.a, plan.convention, marker_style_, hovered == polarplot::HoverTarget::kA,
-        a_.dragging_, line_width_, auto_scale_, extent, &tip_marker_color, &color_a);
-    draw_length_tick_for(a_result.head);
-    const polarplot::InteractiveVectorResult b_result = polarplot::draw_interactive_vector(
-        "B", plan.b, plan.convention, marker_style_, hovered == polarplot::HoverTarget::kB,
-        b_.dragging_, line_width_, auto_scale_, extent, &tip_marker_color, &color_b);
-    draw_length_tick_for(b_result.head);
     // Live drag tooltip (#44/#51): only while actively dragging, not during a
     // plain pre-drag hover -- disappears the instant the drag ends, since a
     // kReleased/kIdle/kHovered frame no longer matches kDragging here.
-    if (a_result.state == polarplot::InteractionState::kDragging) {
-        draw_drag_tooltip("A", a_result.head);
+    if (result->a.state == polarplot::InteractionState::kDragging) {
+        draw_drag_tooltip("A", result->a.head);
     }
-    if (b_result.state == polarplot::InteractionState::kDragging) {
-        draw_drag_tooltip("B", b_result.head);
+    if (result->b.state == polarplot::InteractionState::kDragging) {
+        draw_drag_tooltip("B", result->b.head);
     }
-    apply_interactive_result(a_, a_result);
-    apply_interactive_result(b_, b_result);
-    // PlotPlan::derived_vectors' push order is a documented contract (see
-    // plot_plan.cpp) matching this loop's draw/legend order.
-    for (const PlotPlan::DerivedVector& derived : plan.derived_vectors) {
-        const polarplot::MarkerColor color = vector_color(derived.label);
-        polarplot::draw_vector(derived.label, derived.point, plan.convention, marker_style_,
-                               line_width_, &tip_marker_color, &color);
-        draw_length_tick_for(derived.point);
-    }
-    // Positional ids: fine because draw_annotation_vector's id is never shown
-    // (see polar_plot.hpp), only needs to be unique per frame, and
-    // PlotPlan::tip_to_tail_annotations' push order is a documented contract
-    // (see plot_plan.cpp) -- not derived from branching here.
-    for (std::size_t i = 0; i < plan.tip_to_tail_annotations.size(); ++i) {
-        const std::string id = "tip_to_tail_" + std::to_string(i);
-        polarplot::draw_annotation_vector(id.c_str(), plan.tip_to_tail_annotations[i],
-                                          plan.convention, line_width_);
-    }
-    if (plan.difference_segment) {
-        polarplot::draw_annotation_vector("diff_segment_b_to_a_tip", *plan.difference_segment,
-                                          plan.convention, line_width_);
-    }
-    if (plan.difference_segment_ba) {
-        polarplot::draw_annotation_vector("diff_segment_a_to_b_tip", *plan.difference_segment_ba,
-                                          plan.convention, line_width_);
-    }
-    if (plan.zero_direction_arc_angle) {
-        polarplot::ArcStyle arc_style{};
-        arc_style.thickness = line_width_;
-        const double zero_direction_arc_radius = extent * 0.85;
-        polarplot::draw_angle_arc(zero_direction_arc_radius, *plan.zero_direction_arc_angle,
-                                  arc_style);
-
-        // Short tick straddling the arc's start point (12 o'clock), marking
-        // it as the arc's reference point -- gated on the same condition as
-        // the arc itself, so it only ever appears while the arc does.
-        const polarplot::ZeroDirectionTick tick =
-            polarplot::zero_direction_arc_tick(zero_direction_arc_radius, extent);
-        const std::array<double, 2> tick_x{tick.inner.x, tick.outer.x};
-        const std::array<double, 2> tick_y{tick.inner.y, tick.outer.y};
-        const ImPlotSpec tick_spec{ImPlotProp_LineWeight, line_width_};
-        ImPlot::PlotLine("##zero_direction_tick", tick_x.data(), tick_y.data(), 2, tick_spec);
-    }
-    // Always drawn, right on the outer ring (as opposed to the zero-direction
-    // arc's slightly inset radius above) and centered on the plot's
-    // 3-o'clock reference rather than 12-o'clock, so it never visually
-    // overlaps that arc; distinct color reinforces the two are unrelated.
-    polarplot::ArcStyle rotation_indicator_style{};
-    rotation_indicator_style.r = 0.2F;
-    rotation_indicator_style.g = 0.6F;
-    rotation_indicator_style.b = 1.0F;
-    rotation_indicator_style.a = 1.0F;
-    rotation_indicator_style.thickness = line_width_;
-    polarplot::draw_rotation_indicator(view_frame, plan.rotation_indicator_sweep_sign,
-                                       rotation_indicator_style);
-    polarplot::end_vector_plot();
+    apply_interactive_result(a_, result->a);
+    apply_interactive_result(b_, result->b);
 }
 
 }  // namespace ui
