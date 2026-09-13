@@ -54,6 +54,21 @@ struct SumConstruction {
     return ConstructionVector{.start = b, .vector = a - b};
 }
 
+/// The tip-to-tail construction for `b - a`: a copy of `-a` starting at `b`'s
+/// tip, arriving at the resultant `b - a`. Mirrors tip_to_tail_difference.
+[[nodiscard]] constexpr ConstructionVector tip_to_tail_difference_ba(vecmath::Vec2 a,
+                                                                     vecmath::Vec2 b) {
+    return ConstructionVector{.start = b, .vector = -a};
+}
+
+/// The difference segment for `b - a`: the free vector from `a`'s tip to
+/// `b`'s tip. Congruent to `b - a` itself, but drawn where the two source
+/// vectors actually are rather than at the origin. Degenerates to a
+/// zero-length segment at `a` when `a == b`. Mirrors difference_segment.
+[[nodiscard]] constexpr ConstructionVector difference_segment_ba(vecmath::Vec2 a, vecmath::Vec2 b) {
+    return ConstructionVector{.start = a, .vector = b - a};
+}
+
 }  // namespace ui
 
 #endif  // UI_CONSTRUCTION_HPP

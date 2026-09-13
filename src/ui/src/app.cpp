@@ -568,6 +568,10 @@ void App::draw_plot() {
         polarplot::draw_annotation_vector("diff_segment_b_to_a_tip", *plan.difference_segment,
                                           plan.convention, line_width_);
     }
+    if (plan.difference_segment_ba) {
+        polarplot::draw_annotation_vector("diff_segment_a_to_b_tip", *plan.difference_segment_ba,
+                                          plan.convention, line_width_);
+    }
     if (plan.zero_direction_arc_angle) {
         polarplot::ArcStyle arc_style{};
         arc_style.thickness = line_width_;

@@ -54,6 +54,7 @@ TEST_CASE("plan_plot always populates a, b, and the composed convention", "[plot
     CHECK_FALSE(plan.difference.has_value());
     CHECK(plan.tip_to_tail_annotations.empty());
     CHECK_FALSE(plan.difference_segment.has_value());
+    CHECK_FALSE(plan.difference_segment_ba.has_value());
     CHECK_FALSE(plan.zero_direction_arc_angle.has_value());
     CHECK_FALSE(plan.difference_ba.has_value());
     CHECK_FALSE(plan.product.has_value());
@@ -183,6 +184,100 @@ TEST_CASE("difference shown/hidden x tip-to-tail on/off x difference-segment on/
         REQUIRE(plan.tip_to_tail_annotations.size() == 1);
         REQUIRE(plan.difference_segment.has_value());
     }
+}
+
+TEST_CASE("difference_ba shown/hidden x tip-to-tail on/off x difference-segment on/off",
+          "[plot_plan]") {
+    SECTION("difference_ba hidden: no B-A annotations regardless of the other toggles") {
+        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA,
+                                                       .b = kB,
+                                                       .show_tip_to_tail = true,
+                                                       .show_difference_segment = true,
+                                                       .show_difference_ba = false});
+        CHECK_FALSE(plan.difference_ba.has_value());
+        CHECK(plan.tip_to_tail_annotations.empty());
+        CHECK_FALSE(plan.difference_segment_ba.has_value());
+    }
+
+    SECTION("difference_ba shown, both overlays off: B-A present, no annotations") {
+        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA,
+                                                       .b = kB,
+                                                       .show_tip_to_tail = false,
+                                                       .show_difference_segment = false,
+                                                       .show_difference_ba = true});
+        CHECK(points_equal(require_value(plan.difference_ba), {(kB - kA).x, (kB - kA).y}));
+        CHECK(plan.tip_to_tail_annotations.empty());
+        CHECK_FALSE(plan.difference_segment_ba.has_value());
+    }
+
+    SECTION("difference_ba shown, tip-to-tail on only: one annotation, -a from b's tip") {
+        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA,
+                                                       .b = kB,
+                                                       .show_tip_to_tail = true,
+                                                       .show_difference_segment = false,
+                                                       .show_difference_ba = true});
+        REQUIRE(plan.tip_to_tail_annotations.size() == 1);
+        CHECK(annotations_equal(plan.tip_to_tail_annotations[0], {{kB.x, kB.y}, {-kA.x, -kA.y}}));
+        CHECK_FALSE(plan.difference_segment_ba.has_value());
+    }
+
+    SECTION("difference_ba shown, difference-segment on only: segment from a's tip to b's tip") {
+        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA,
+                                                       .b = kB,
+                                                       .show_tip_to_tail = false,
+                                                       .show_difference_segment = true,
+                                                       .show_difference_ba = true});
+        CHECK(plan.tip_to_tail_annotations.empty());
+        CHECK(annotations_equal(require_value(plan.difference_segment_ba),
+                                {{kA.x, kA.y}, {(kB - kA).x, (kB - kA).y}}));
+    }
+
+    SECTION("difference_ba shown, both overlays on: both present together") {
+        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA,
+                                                       .b = kB,
+                                                       .show_tip_to_tail = true,
+                                                       .show_difference_segment = true,
+                                                       .show_difference_ba = true});
+        REQUIRE(plan.tip_to_tail_annotations.size() == 1);
+        REQUIRE(plan.difference_segment_ba.has_value());
+    }
+
+    SECTION("degenerate a == b: both directions collapse to zero-length constructions") {
+        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA,
+                                                       .b = kA,
+                                                       .show_difference = true,
+                                                       .show_tip_to_tail = true,
+                                                       .show_difference_segment = true,
+                                                       .show_difference_ba = true});
+        REQUIRE(plan.tip_to_tail_annotations.size() == 2);
+        CHECK(annotations_equal(plan.tip_to_tail_annotations[0], {{kA.x, kA.y}, {-kA.x, -kA.y}}));
+        CHECK(annotations_equal(plan.tip_to_tail_annotations[1], {{kA.x, kA.y}, {-kA.x, -kA.y}}));
+        CHECK(
+            annotations_equal(require_value(plan.difference_segment), {{kA.x, kA.y}, {0.0, 0.0}}));
+        CHECK(annotations_equal(require_value(plan.difference_segment_ba),
+                                {{kA.x, kA.y}, {0.0, 0.0}}));
+    }
+}
+
+TEST_CASE("both difference directions shown together: both constructions render simultaneously",
+          "[plot_plan]") {
+    const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA,
+                                                   .b = kB,
+                                                   .show_difference = true,
+                                                   .show_tip_to_tail = true,
+                                                   .show_difference_segment = true,
+                                                   .show_difference_ba = true});
+
+    REQUIRE(plan.difference.has_value());
+    REQUIRE(plan.difference_ba.has_value());
+    // Push order: A - B's tip-to-tail annotation precedes B - A's.
+    REQUIRE(plan.tip_to_tail_annotations.size() == 2);
+    CHECK(annotations_equal(plan.tip_to_tail_annotations[0], {{kA.x, kA.y}, {-kB.x, -kB.y}}));
+    CHECK(annotations_equal(plan.tip_to_tail_annotations[1], {{kB.x, kB.y}, {-kA.x, -kA.y}}));
+    CHECK(annotations_equal(require_value(plan.difference_segment),
+                            {{kB.x, kB.y}, {(kA - kB).x, (kA - kB).y}}));
+    CHECK(annotations_equal(require_value(plan.difference_segment_ba),
+                            {{kA.x, kA.y}, {(kB - kA).x, (kB - kA).y}}));
 }
 
 TEST_CASE("zero-direction arc: transient focus x persistent toggle", "[plot_plan]") {
