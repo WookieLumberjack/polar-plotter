@@ -67,6 +67,13 @@ struct ThemeStyle {
     ThemeColor button_hovered{};
     ThemeColor button_active{};
     ThemeColor tab_selected{};
+    // The derived-vectors table's header row background and its borders --
+    // like menu_bar_bg/popup_bg, Dear ImGui gives tables their own distinct
+    // color slots rather than reusing WindowBg/FrameBg, so a theme that
+    // leaves these unset shows the original dark table chrome around text
+    // that already changed color.
+    ThemeColor table_header_bg{};
+    ThemeColor table_border{};
 
     friend bool operator==(const ThemeStyle&, const ThemeStyle&) = default;
 };
