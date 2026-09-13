@@ -99,10 +99,17 @@ struct PlotPlan {
     std::optional<polarplot::Point> product;
     std::optional<polarplot::Point> quotient_ab;
     std::optional<polarplot::Point> quotient_ba;
-    // 0, 1 (difference's tip-to-tail only), or 2 (sum's parallelogram)
-    // entries, depending on which toggles are on.
+    // 0-4 entries depending on which toggles are on: A - B's tip-to-tail
+    // annotation (if show_difference && show_tip_to_tail), then B - A's (if
+    // show_difference_ba && show_tip_to_tail), then the sum's two (if
+    // show_sum && show_tip_to_tail) -- see plan_plot's push-order comment.
     std::vector<polarplot::AnnotationVector> tip_to_tail_annotations;
     std::optional<polarplot::AnnotationVector> difference_segment;
+    // The B - A counterpart to difference_segment above: the free vector
+    // from A's tip to B's tip, present iff show_difference_ba &&
+    // show_difference_segment. Both can be present simultaneously when both
+    // difference directions are shown.
+    std::optional<polarplot::AnnotationVector> difference_segment_ba;
     // Present iff the arc should be drawn this frame (transient-focused OR
     // persistent-toggle), holding the angle to draw it at.
     std::optional<double> zero_direction_arc_angle;

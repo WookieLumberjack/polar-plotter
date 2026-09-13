@@ -110,10 +110,11 @@ PlotPlan plan_plot(const PlotInputs& inputs) {
     plan.extent =
         inputs.auto_scale ? auto_fit_extent(inputs) : manual_extent(inputs.manual_ring_interval);
 
-    // Push order below is part of PlotPlan's contract: when both are present,
-    // the difference's tip-to-tail annotation always precedes the sum's two,
-    // so a caller drawing tip_to_tail_annotations by index (e.g. an
-    // "tip_to_tail_<i>" id) gets a stable, predictable id per entry.
+    // Push order below is part of PlotPlan's contract: when present, the
+    // entries appear in this fixed order regardless of which toggles
+    // produced them -- A - B's tip-to-tail annotation, then B - A's, then the
+    // sum's two -- so a caller drawing tip_to_tail_annotations by index (e.g.
+    // an "tip_to_tail_<i>" id) gets a stable, predictable id per entry.
     if (inputs.show_difference) {
         plan.difference = to_point(diff);
         if (inputs.show_tip_to_tail) {
@@ -125,6 +126,17 @@ PlotPlan plan_plot(const PlotInputs& inputs) {
         }
     }
 
+    if (inputs.show_difference_ba) {
+        plan.difference_ba = to_point(inputs.b - inputs.a);
+        if (inputs.show_tip_to_tail) {
+            plan.tip_to_tail_annotations.push_back(
+                to_annotation(tip_to_tail_difference_ba(inputs.a, inputs.b)));
+        }
+        if (inputs.show_difference_segment) {
+            plan.difference_segment_ba = to_annotation(difference_segment_ba(inputs.a, inputs.b));
+        }
+    }
+
     if (inputs.show_sum) {
         plan.sum = to_point(sum);
         if (inputs.show_tip_to_tail) {
@@ -132,10 +144,6 @@ PlotPlan plan_plot(const PlotInputs& inputs) {
             plan.tip_to_tail_annotations.push_back(to_annotation(construction.b_from_a_tip));
             plan.tip_to_tail_annotations.push_back(to_annotation(construction.a_from_b_tip));
         }
-    }
-
-    if (inputs.show_difference_ba) {
-        plan.difference_ba = to_point(inputs.b - inputs.a);
     }
     if (inputs.show_product) {
         plan.product = to_point(vecmath::complex_multiply(inputs.a, inputs.b));
