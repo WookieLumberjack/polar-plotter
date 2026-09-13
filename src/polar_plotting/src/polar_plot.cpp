@@ -328,6 +328,31 @@ void draw_vector(const char* label, Point head, AngleConvention convention,
     draw_tip_label(label, tip);
 }
 
+void draw_length_tick(double magnitude, MarkerColor color) {
+    // The ruler (Y2) axis' current visible extent -- clamped/ignored against
+    // this, not against view_frame's own extent, so the tick always agrees
+    // with what's actually on screen right now (see begin_vector_plot: Y2's
+    // limits are set from the same PlotFrame that drives the ruler ticks).
+    const ImPlotRect limits = ImPlot::GetPlotLimits(ImAxis_X1, ImAxis_Y2);
+    if (magnitude > limits.Y.Max) {
+        return;
+    }
+
+    // A short segment sitting right at the plot's right edge, where the Y2
+    // ruler itself is drawn, sized relative to the ruler's own extent so it
+    // reads consistently regardless of zoom/manual-scale.
+    constexpr double kTickLengthFraction = 0.06;
+    constexpr float kTickThickness = 2.0F;
+    const double tick_length = limits.Y.Max * kTickLengthFraction;
+    const std::array<double, 2> xs{limits.X.Max - tick_length, limits.X.Max};
+    const std::array<double, 2> ys{magnitude, magnitude};
+
+    const ImVec4 line_color{color.r, color.g, color.b, color.a};
+    const ImPlotSpec spec{ImPlotProp_LineColor, line_color, ImPlotProp_LineWeight, kTickThickness};
+    ImPlot::SetAxes(ImAxis_X1, ImAxis_Y2);
+    ImPlot::PlotLine("##length_tick", xs.data(), ys.data(), 2, spec);
+}
+
 HoverTarget hover_hit_test(Point mouse, Point tip_a, Point tip_b, double hit_radius) {
     const double dist_a = std::hypot(mouse.x - tip_a.x, mouse.y - tip_a.y);
     const double dist_b = std::hypot(mouse.x - tip_b.x, mouse.y - tip_b.y);

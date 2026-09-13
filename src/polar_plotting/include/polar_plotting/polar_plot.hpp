@@ -200,6 +200,23 @@ struct MarkerColor {
 /// from \ref draw_vector's default idle marker color.
 inline constexpr MarkerColor kHoverMarkerColor{1.0F, 0.85F, 0.2F, 1.0F};
 
+/// Draw a short horizontal tick mark on the plot's Y2 (ruler) axis at
+/// `y = magnitude`, in \p color. Meant to be called once per currently-shown
+/// vector (A, B, and any toggled derived vector; see \c ui::App::draw_plot),
+/// immediately after that vector's own \ref draw_vector /
+/// \ref draw_interactive_vector call, passing \p color from that same call's
+/// resolved `ImPlot::GetLastItemColor()` -- mirroring how \ref draw_vector's
+/// own shaft/head stay in sync -- so a tick's color always matches its
+/// vector's plotted color rather than being independently assigned.
+/// \p magnitude is always the vector's radius (`std::hypot(x, y)` of its
+/// math-convention components), never its plotted y-coordinate -- fully
+/// decoupled from angle, so two vectors of equal length but different angle
+/// land ticks at the same height. When \p magnitude exceeds the ruler's
+/// current visible extent, the tick is ignored (nothing is drawn) rather than
+/// clamped to the top of the ruler. Must be called between
+/// \ref begin_vector_plot / \ref end_vector_plot this frame.
+void draw_length_tick(double magnitude, MarkerColor color);
+
 /// Draw a named vector: an arrow from the origin to \p head, plus a tip
 /// marker (styled per \p marker_style) and a tip label showing \p label,
 /// both drawn unconditionally -- even when \p head is exactly the origin, in
