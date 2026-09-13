@@ -169,6 +169,25 @@ std::vector<RulerTick> ruler_ticks(double ring_interval, int ring_count) {
     return ticks;
 }
 
+std::vector<double> minor_ruler_ticks(double ring_interval, int ring_count,
+                                      int subdivisions_per_ring) {
+    std::vector<double> ticks;
+    if (subdivisions_per_ring <= 1) {
+        return ticks;
+    }
+    ticks.reserve(static_cast<std::size_t>(ring_count) *
+                  static_cast<std::size_t>(subdivisions_per_ring - 1));
+    for (int r = 0; r < ring_count; ++r) {
+        const double segment_start = ring_interval * static_cast<double>(r);
+        for (int k = 1; k < subdivisions_per_ring; ++k) {
+            const double offset =
+                ring_interval * static_cast<double>(k) / static_cast<double>(subdivisions_per_ring);
+            ticks.push_back(segment_start + offset);
+        }
+    }
+    return ticks;
+}
+
 bool begin_vector_plot(const char* title, PlotFrame frame) {
     const double extent = inflate_for_labels(frame);
     // Suppress the rectangular plot-area border ImPlot draws by default; the
@@ -211,15 +230,27 @@ bool begin_vector_plot(const char* title, PlotFrame frame) {
     ImPlot::SetupAxisLimits(ImAxis_Y2, -half_ranges.y, half_ranges.y, ImPlotCond_Always);
 
     const std::vector<RulerTick> ticks = ruler_ticks(frame.ring_interval(), frame.ring_count());
+    // Fixed at implementation time (#63): quarters between each pair of
+    // adjacent major rings (and origin-to-first-ring), rendered unlabeled via
+    // the same SetupAxisTicks mechanism as the major ticks below (an empty
+    // label string), rather than user-configurable.
+    constexpr int kMinorSubdivisionsPerRing = 4;
+    const std::vector<double> minor_positions =
+        minor_ruler_ticks(frame.ring_interval(), frame.ring_count(), kMinorSubdivisionsPerRing);
+
     std::vector<double> positions;
     std::vector<std::string> label_strings;
     std::vector<const char*> label_pointers;
-    positions.reserve(ticks.size());
-    label_strings.reserve(ticks.size());
-    label_pointers.reserve(ticks.size());
+    positions.reserve(ticks.size() + minor_positions.size());
+    label_strings.reserve(ticks.size() + minor_positions.size());
+    label_pointers.reserve(ticks.size() + minor_positions.size());
     for (const RulerTick& tick : ticks) {
         positions.push_back(tick.position);
         label_strings.push_back(tick.label);
+    }
+    for (const double minor_position : minor_positions) {
+        positions.push_back(minor_position);
+        label_strings.emplace_back();
     }
     for (const std::string& label : label_strings) {
         label_pointers.push_back(label.c_str());

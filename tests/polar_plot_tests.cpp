@@ -327,6 +327,38 @@ TEST_CASE("ruler_ticks respects a custom ring_count", "[polar_plot][ruler_ticks]
     CHECK(ticks[1].label == "1");
 }
 
+TEST_CASE("minor_ruler_ticks places subdivisions between the origin and each ring",
+          "[polar_plot][minor_ruler_ticks]") {
+    const std::vector<double> ticks = polarplot::minor_ruler_ticks(1.0, 2, 4);
+
+    // 2 rings * 3 interior subdivisions per ring segment (quarters minus the
+    // shared endpoint with the next major tick) = 6.
+    REQUIRE(ticks.size() == 6);
+    REQUIRE_THAT(ticks[0], WithinAbs(0.25, 1e-12));
+    REQUIRE_THAT(ticks[1], WithinAbs(0.5, 1e-12));
+    REQUIRE_THAT(ticks[2], WithinAbs(0.75, 1e-12));
+    REQUIRE_THAT(ticks[3], WithinAbs(1.25, 1e-12));
+    REQUIRE_THAT(ticks[4], WithinAbs(1.5, 1e-12));
+    REQUIRE_THAT(ticks[5], WithinAbs(1.75, 1e-12));
+}
+
+TEST_CASE("minor_ruler_ticks scales with a custom ring_interval and subdivisions_per_ring",
+          "[polar_plot][minor_ruler_ticks]") {
+    const std::vector<double> ticks = polarplot::minor_ruler_ticks(2.0, 1, 5);
+
+    REQUIRE(ticks.size() == 4);
+    REQUIRE_THAT(ticks[0], WithinAbs(0.4, 1e-12));
+    REQUIRE_THAT(ticks[1], WithinAbs(0.8, 1e-12));
+    REQUIRE_THAT(ticks[2], WithinAbs(1.2, 1e-12));
+    REQUIRE_THAT(ticks[3], WithinAbs(1.6, 1e-12));
+}
+
+TEST_CASE("minor_ruler_ticks yields no ticks when subdivisions_per_ring is 1 or less",
+          "[polar_plot][minor_ruler_ticks]") {
+    CHECK(polarplot::minor_ruler_ticks(1.0, 4, 1).empty());
+    CHECK(polarplot::minor_ruler_ticks(1.0, 4, 0).empty());
+}
+
 TEST_CASE("PlotFrame's extent is derived from its ring_interval and ring_count",
           "[polar_plot][plot_frame]") {
     SECTION("default ring_count") {
