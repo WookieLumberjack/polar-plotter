@@ -458,6 +458,62 @@ TEST_CASE("inflate_for_labels inflates a PlotFrame's extent by a fixed headroom 
     }
 }
 
+// #61: axis_half_ranges replaces ImPlotFlags_Equal so the rings stay
+// circular (never stretched or clipped) at any canvas pixel aspect ratio.
+TEST_CASE("axis_half_ranges on a square canvas gives equal half-ranges on both axes",
+          "[polar_plot][axis_half_ranges]") {
+    const polarplot::AxisHalfRanges ranges = polarplot::axis_half_ranges(800.0, 800.0, 5.0);
+    REQUIRE_THAT(ranges.x, WithinAbs(5.0, 1e-12));
+    REQUIRE_THAT(ranges.y, WithinAbs(5.0, 1e-12));
+}
+
+TEST_CASE("axis_half_ranges on a wide canvas gives x a larger half-range than y",
+          "[polar_plot][axis_half_ranges]") {
+    // Twice as wide as tall: y (the shorter screen dimension) gets exactly
+    // half_range, x gets padded by the pixel excess.
+    const polarplot::AxisHalfRanges ranges = polarplot::axis_half_ranges(1000.0, 500.0, 5.0);
+    REQUIRE_THAT(ranges.y, WithinAbs(5.0, 1e-12));
+    REQUIRE_THAT(ranges.x, WithinAbs(10.0, 1e-12));
+    CHECK(ranges.x > ranges.y);
+}
+
+TEST_CASE("axis_half_ranges on a tall canvas gives y a larger half-range than x",
+          "[polar_plot][axis_half_ranges]") {
+    // Twice as tall as wide: x (the shorter screen dimension) gets exactly
+    // half_range, y gets padded by the pixel excess.
+    const polarplot::AxisHalfRanges ranges = polarplot::axis_half_ranges(500.0, 1000.0, 5.0);
+    REQUIRE_THAT(ranges.x, WithinAbs(5.0, 1e-12));
+    REQUIRE_THAT(ranges.y, WithinAbs(10.0, 1e-12));
+    CHECK(ranges.y > ranges.x);
+}
+
+TEST_CASE("axis_half_ranges falls back to equal half-ranges for degenerate canvas dimensions",
+          "[polar_plot][axis_half_ranges]") {
+    SECTION("zero width") {
+        const polarplot::AxisHalfRanges ranges = polarplot::axis_half_ranges(0.0, 600.0, 5.0);
+        REQUIRE_THAT(ranges.x, WithinAbs(5.0, 1e-12));
+        REQUIRE_THAT(ranges.y, WithinAbs(5.0, 1e-12));
+    }
+
+    SECTION("zero height") {
+        const polarplot::AxisHalfRanges ranges = polarplot::axis_half_ranges(600.0, 0.0, 5.0);
+        REQUIRE_THAT(ranges.x, WithinAbs(5.0, 1e-12));
+        REQUIRE_THAT(ranges.y, WithinAbs(5.0, 1e-12));
+    }
+
+    SECTION("both dimensions zero") {
+        const polarplot::AxisHalfRanges ranges = polarplot::axis_half_ranges(0.0, 0.0, 5.0);
+        REQUIRE_THAT(ranges.x, WithinAbs(5.0, 1e-12));
+        REQUIRE_THAT(ranges.y, WithinAbs(5.0, 1e-12));
+    }
+
+    SECTION("negative dimension") {
+        const polarplot::AxisHalfRanges ranges = polarplot::axis_half_ranges(-100.0, 600.0, 5.0);
+        REQUIRE_THAT(ranges.x, WithinAbs(5.0, 1e-12));
+        REQUIRE_THAT(ranges.y, WithinAbs(5.0, 1e-12));
+    }
+}
+
 // #49: manual-scale drag clamp -- a dragged tip can never leave the currently
 // visible extent when auto-scale is off.
 TEST_CASE("clamp_to_extent leaves a point inside the extent unchanged",

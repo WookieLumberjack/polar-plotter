@@ -69,6 +69,30 @@ private:
 /// view. Pure function -- the test seam for label-headroom padding.
 [[nodiscard]] double inflate_for_labels(PlotFrame frame);
 
+/// Per-axis half-range (i.e. the `[-half_range, +half_range]` span) each of
+/// the plot's x/y axes should use, given the plot canvas' actual pixel
+/// dimensions. See \ref axis_half_ranges.
+struct AxisHalfRanges {
+    double x{0.0};
+    double y{0.0};
+};
+
+/// Compute the x/y axis half-ranges that keep a circle of radius
+/// \p half_range perfectly circular (never stretched or clipped) on a canvas
+/// \p canvas_width_px by \p canvas_height_px pixels, replacing
+/// \c ImPlotFlags_Equal (which fights manual axis limits once the canvas
+/// isn't square -- see #61). The screen dimension with *fewer* pixels gets
+/// exactly \p half_range; the other dimension's half-range is scaled up by
+/// that dimension's pixel excess (`longer_px / shorter_px`), so the circle
+/// stays centered and fully visible with the leftover space as padding along
+/// the longer screen dimension. A square canvas (equal pixel dimensions)
+/// yields equal half-ranges on both axes. Degenerate input (either dimension
+/// zero or negative, e.g. before the first layout pass) falls back to equal
+/// half-ranges on both axes rather than dividing by zero. Pure function --
+/// the test seam for this geometry.
+[[nodiscard]] AxisHalfRanges axis_half_ranges(double canvas_width_px, double canvas_height_px,
+                                              double half_range);
+
 /// Map a math-convention angle (radians, measured from the +x axis,
 /// increasing counterclockwise) to the angle actually used for drawing under
 /// \p convention: `plotted_angle = zero_direction + angle_sign * math_angle`,
@@ -128,16 +152,25 @@ struct RulerTick {
 /// placement, mirroring \ref spoke_labels for the grid's spokes.
 [[nodiscard]] std::vector<RulerTick> ruler_ticks(double ring_interval, int ring_count = 4);
 
-/// Begin an equal-aspect plot centred on the origin, spanning +/-
-/// \ref inflate_for_labels "inflate_for_labels(frame)" on both axes (headroom
-/// beyond \p frame's own extent so spoke-degree labels aren't clipped), plus a
-/// locked secondary vertical axis (ImPlot's Y2) on the plot's right side
-/// showing a scale ruler: explicit ticks at each ring's radius (see
-/// \ref ruler_ticks), computed from \p frame's \c ring_interval and
-/// \c ring_count -- callers must pass the same \p frame to \ref draw_polar_grid
-/// and \ref draw_rotation_indicator this frame so the ruler and the grid never
-/// disagree. Returns true when the plot is visible; call \ref end_vector_plot
-/// exactly once iff this returned true (mirrors ImPlot::BeginPlot).
+/// Begin a plot centred on the origin whose rings (see \ref draw_polar_grid)
+/// always render as perfect circles regardless of the canvas' pixel aspect
+/// ratio (#61): the axis half-ranges are computed each frame via
+/// \ref axis_half_ranges from the plot region's actual pixel dimensions and
+/// \ref inflate_for_labels "inflate_for_labels(frame)" (headroom beyond
+/// \p frame's own extent so spoke-degree labels aren't clipped) -- the
+/// screen dimension with fewer pixels gets exactly that half-range, the
+/// other gets padding, so the circle is always centred and fully visible and
+/// never stretched or clipped. (This replaces the older
+/// `ImPlotFlags_Equal` + symmetric `SetupAxesLimits` behavior, which fought
+/// ImPlot's own equal-aspect correction and clipped the circle once the
+/// canvas went non-square.) Also sets up a locked secondary vertical axis
+/// (ImPlot's Y2) on the plot's right side showing a scale ruler: explicit
+/// ticks at each ring's radius (see \ref ruler_ticks), computed from
+/// \p frame's \c ring_interval and \c ring_count -- callers must pass the
+/// same \p frame to \ref draw_polar_grid and \ref draw_rotation_indicator
+/// this frame so the ruler and the grid never disagree. Returns true when
+/// the plot is visible; call \ref end_vector_plot exactly once iff this
+/// returned true (mirrors ImPlot::BeginPlot).
 [[nodiscard]] bool begin_vector_plot(const char* title, PlotFrame frame);
 
 /// End a plot begun with \ref begin_vector_plot.

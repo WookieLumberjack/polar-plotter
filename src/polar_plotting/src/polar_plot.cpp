@@ -98,6 +98,22 @@ ArrowheadWings arrowhead_wing_points(Point tail, Point head, double head_frac) {
 
 double inflate_for_labels(PlotFrame frame) { return frame.extent() * kLabelPaddingFactor; }
 
+AxisHalfRanges axis_half_ranges(double canvas_width_px, double canvas_height_px,
+                                double half_range) {
+    // Degenerate canvas (e.g. before the first layout pass) -- fall back to
+    // equal half-ranges rather than dividing by zero/negative pixel extents.
+    if (canvas_width_px <= 0.0 || canvas_height_px <= 0.0) {
+        return {half_range, half_range};
+    }
+    if (canvas_width_px < canvas_height_px) {
+        return {half_range, half_range * (canvas_height_px / canvas_width_px)};
+    }
+    if (canvas_height_px < canvas_width_px) {
+        return {half_range * (canvas_width_px / canvas_height_px), half_range};
+    }
+    return {half_range, half_range};
+}
+
 double apply_angle_convention(double math_angle, AngleConvention convention) {
     const double angle = convention.zero_direction + (convention.angle_sign * math_angle);
     double wrapped = std::fmod(angle, kTwoPi);
@@ -161,7 +177,13 @@ bool begin_vector_plot(const char* title, PlotFrame frame) {
     // matching ImPlot's "only call EndPlot() if BeginPlot() returns true"
     // contract.
     ImPlot::PushStyleColor(ImPlotCol_PlotBorder, ImVec4(0.0F, 0.0F, 0.0F, 0.0F));
-    constexpr ImPlotFlags kPlotFlags = ImPlotFlags_Equal | ImPlotFlags_NoInputs;
+    // Captured before BeginPlot, since the plot fills whatever space is
+    // available (ImVec2(-1, -1) below) -- this is that space's pixel size.
+    // Drives axis_half_ranges so the rings stay circular at any aspect ratio
+    // (#61) instead of relying on ImPlotFlags_Equal, which fights manual
+    // per-axis limits once the canvas isn't square.
+    const ImVec2 canvas_size = ImGui::GetContentRegionAvail();
+    constexpr ImPlotFlags kPlotFlags = ImPlotFlags_NoInputs;
     if (!ImPlot::BeginPlot(title, ImVec2(-1, -1), kPlotFlags)) {
         ImPlot::PopStyleColor();
         return false;
@@ -171,10 +193,13 @@ bool begin_vector_plot(const char* title, PlotFrame frame) {
     // gridlines entirely rather than just hiding the labels.
     constexpr ImPlotAxisFlags kAxisFlags = ImPlotAxisFlags_NoDecorations;
     ImPlot::SetupAxes("x", "y", kAxisFlags, kAxisFlags);
+    const AxisHalfRanges half_ranges = axis_half_ranges(static_cast<double>(canvas_size.x),
+                                                        static_cast<double>(canvas_size.y), extent);
     // Re-apply every frame (ImPlotCond_Always) so leftover pan/zoom state
     // can never drift the limits away from the caller-supplied extent, even
     // though ImPlotFlags_NoInputs already blocks new pan/zoom input.
-    ImPlot::SetupAxesLimits(-extent, extent, -extent, extent, ImPlotCond_Always);
+    ImPlot::SetupAxesLimits(-half_ranges.x, half_ranges.x, -half_ranges.y, half_ranges.y,
+                            ImPlotCond_Always);
 
     // Secondary vertical axis: a scale ruler on the plot's opposite (right)
     // side, showing the real distance each ring represents. No gridlines (the
@@ -183,7 +208,7 @@ bool begin_vector_plot(const char* title, PlotFrame frame) {
     constexpr ImPlotAxisFlags kRulerFlags =
         ImPlotAxisFlags_Opposite | ImPlotAxisFlags_NoGridLines | ImPlotAxisFlags_Lock;
     ImPlot::SetupAxis(ImAxis_Y2, nullptr, kRulerFlags);
-    ImPlot::SetupAxisLimits(ImAxis_Y2, -extent, extent, ImPlotCond_Always);
+    ImPlot::SetupAxisLimits(ImAxis_Y2, -half_ranges.y, half_ranges.y, ImPlotCond_Always);
 
     const std::vector<RulerTick> ticks = ruler_ticks(frame.ring_interval(), frame.ring_count());
     std::vector<double> positions;
