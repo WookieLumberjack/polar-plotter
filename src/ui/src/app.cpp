@@ -18,6 +18,7 @@
 #include "ui/derived_vectors.hpp"
 #include "ui/plot_plan.hpp"
 #include "ui/polar_display.hpp"
+#include "ui/theme.hpp"
 #include "ui/zero_direction.hpp"
 #include "vector_math/vec2.hpp"
 
@@ -175,7 +176,7 @@ void App::draw_derived_vectors_table(const DerivedVectors& derived) {
     ImGui::EndTable();
 }
 
-App::App() = default;
+App::App() { apply_current_theme(); }
 
 App::App(std::filesystem::path config_path) : config_path_(std::move(config_path)) {
     if (auto cfg = load_config(config_path_)) {
@@ -190,7 +191,9 @@ App::App(std::filesystem::path config_path) : config_path_(std::move(config_path
         line_width_ = cfg->line_width;
         auto_scale_ = cfg->auto_scale;
         manual_ring_interval_ = cfg->manual_ring_interval;
+        theme_ = cfg->theme;
     }
+    apply_current_theme();
 }
 
 App::~App() { save(); }
@@ -211,9 +214,12 @@ void App::save() const {
         .line_width = line_width_,
         .auto_scale = auto_scale_,
         .manual_ring_interval = manual_ring_interval_,
+        .theme = theme_,
     };
     (void)save_config(config_path_, cfg);
 }
+
+void App::apply_current_theme() const { apply_theme(theme_style(theme_)); }
 
 void App::draw_dockspace_host() {
     const ImGuiViewport* vp = ImGui::GetMainViewport();
@@ -224,8 +230,7 @@ void App::draw_dockspace_host() {
     // Standard invisible-dockspace-host window: fills the viewport, has no
     // chrome of its own, and never becomes a dockable node itself (only its
     // DockSpace() child area is). ImGuiWindowFlags_MenuBar is reserved here
-    // (unused for now) so a later ticket adding the actual menu bar doesn't
-    // need to touch this window's flags again.
+    // for the File/Theme menu bar drawn below.
     constexpr ImGuiWindowFlags kHostFlags =
         ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar |
         ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
@@ -237,6 +242,8 @@ void App::draw_dockspace_host() {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0F, 0.0F));
     ImGui::Begin("##dockspace_host", nullptr, kHostFlags);
     ImGui::PopStyleVar(3);
+
+    draw_menu_bar();
 
     const ImGuiID dockspace_id = ImGui::GetID("MainDockSpace");
 
@@ -259,6 +266,33 @@ void App::draw_dockspace_host() {
 
     ImGui::DockSpace(dockspace_id);
     ImGui::End();
+}
+
+void App::draw_menu_bar() {
+    if (!ImGui::BeginMenuBar()) {
+        return;
+    }
+    if (ImGui::BeginMenu("File")) {
+        // See want_exit()'s doc comment for why this sets a flag rather than
+        // calling glfwSetWindowShouldClose itself.
+        if (ImGui::MenuItem("Exit")) {
+            want_exit_ = true;
+        }
+        ImGui::EndMenu();
+    }
+    if (ImGui::BeginMenu("Theme")) {
+        constexpr std::array<Theme, 5> kThemes{Theme::kSlate, Theme::kMidnight, Theme::kPaper,
+                                               Theme::kNordLight, Theme::kMint};
+        for (const Theme candidate : kThemes) {
+            const bool selected = candidate == theme_;
+            if (ImGui::MenuItem(theme_label(candidate), nullptr, selected) && !selected) {
+                theme_ = candidate;
+                apply_current_theme();
+            }
+        }
+        ImGui::EndMenu();
+    }
+    ImGui::EndMenuBar();
 }
 
 void App::render() {

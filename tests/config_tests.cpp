@@ -5,10 +5,12 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "ui/config.hpp"
+#include "ui/theme.hpp"
 
 using ui::Config;
 using ui::load_config;
 using ui::save_config;
+using ui::Theme;
 
 namespace {
 
@@ -133,6 +135,51 @@ TEST_CASE(
     CHECK(loaded.show_product == Config{}.show_product);
     CHECK(loaded.show_quotient_ab == Config{}.show_quotient_ab);
     CHECK(loaded.show_quotient_ba == Config{}.show_quotient_ba);
+
+    std::filesystem::remove(path);
+}
+
+TEST_CASE("theme round-trips through save_config/load_config", "[config]") {
+    const std::filesystem::path path = make_temp_path("polar_plotter_config_tests_theme.cfg");
+
+    Config cfg{};
+    cfg.theme = Theme::kNordLight;
+
+    REQUIRE(save_config(path, cfg));
+    const Config loaded = require_value(load_config(path));
+    CHECK(loaded.theme == Theme::kNordLight);
+
+    std::filesystem::remove(path);
+}
+
+TEST_CASE("loading a config file that omits theme falls back to the default", "[config]") {
+    const std::filesystem::path path =
+        make_temp_path("polar_plotter_config_tests_theme_missing.cfg");
+
+    {
+        std::ofstream out(path, std::ios::trunc);
+        out << "a.x=1.0\n";
+        out << "a.y=2.0\n";
+    }
+
+    const Config loaded = require_value(load_config(path));
+    CHECK(loaded.theme == Config{}.theme);
+
+    std::filesystem::remove(path);
+}
+
+TEST_CASE("loading a config file with an unrecognized theme= value falls back to the default",
+          "[config]") {
+    const std::filesystem::path path =
+        make_temp_path("polar_plotter_config_tests_theme_unrecognized.cfg");
+
+    {
+        std::ofstream out(path, std::ios::trunc);
+        out << "theme=not_a_real_theme\n";
+    }
+
+    const Config loaded = require_value(load_config(path));
+    CHECK(loaded.theme == Config{}.theme);
 
     std::filesystem::remove(path);
 }

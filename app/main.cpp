@@ -153,6 +153,9 @@ int main() {
             ImGui::NewFrame();
 
             app.render();
+            if (app.want_exit()) {
+                glfwSetWindowShouldClose(window, GLFW_TRUE);
+            }
 
             ImGui::Render();
             int display_w = 0;
