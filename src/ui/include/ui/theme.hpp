@@ -43,7 +43,24 @@ struct ThemeStyle {
     ThemeColor text{};
     ThemeColor window_bg{};
     ThemeColor frame_bg{};
+    // A docked panel's title bar/tab strip when it does NOT have input focus
+    // (e.g. neither panel has been clicked into yet, or focus is on the
+    // other one) -- distinct from title_bg_active below, which only covers
+    // the focused case. See apply_theme: Dear ImGui's own dark-theme
+    // constructor derives the Tab/TabDimmed/TabDimmedSelected family from
+    // this plus title_bg_active/header once at startup and never
+    // recomputes them, so apply_theme must re-derive them the same way
+    // whenever the theme changes, or unfocused panels stay stuck at the
+    // original (dark) derived colors under every theme.
+    ThemeColor title_bg{};
     ThemeColor title_bg_active{};
+    // Backdrop behind the main menu bar (see the File/Theme menu bar in the
+    // dockspace host window) and behind popups/tooltips -- Dear ImGui and
+    // ImPlot's own StyleColorsAuto() (legend background, e.g.) both key off
+    // these rather than window_bg, so a theme that leaves them unset shows
+    // the wrong-contrast default backdrop under text this struct does color.
+    ThemeColor menu_bar_bg{};
+    ThemeColor popup_bg{};
     ThemeColor header{};
     ThemeColor header_hovered{};
     ThemeColor button{};
