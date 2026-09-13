@@ -15,8 +15,12 @@ constexpr double kDegToRad = std::numbers::pi / 180.0;
 
 // Padding applied to the largest shown vector's magnitude before snapping up
 // to a nice ring interval, so vector tips don't sit exactly on the outer
-// ring.
-constexpr double kAutoFitMargin = 1.2;
+// ring. Kept small: the outer ring itself is rarely reached in practice
+// (the largest vector often lands mid-plot instead) mostly because of gaps
+// between successive "nice" ring intervals (e.g. 1 -> 2 is already a 100%
+// jump), not this margin -- a bigger margin only makes that worse, so this
+// stays just large enough to keep the tip visibly clear of the ring.
+constexpr double kAutoFitMargin = 1.05;
 
 // Fallback ring interval used when every shown vector is (numerically) at
 // the origin, so the view never collapses to a zero/degenerate extent.
@@ -61,6 +65,23 @@ polarplot::PlotFrame auto_fit_extent(const PlotInputs& inputs) {
     }
     if (inputs.show_difference) {
         max_magnitude = std::max(max_magnitude, vecmath::magnitude(inputs.a - inputs.b));
+    }
+    if (inputs.show_difference_ba) {
+        max_magnitude = std::max(max_magnitude, vecmath::magnitude(inputs.b - inputs.a));
+    }
+    if (inputs.show_product) {
+        max_magnitude = std::max(max_magnitude,
+                                 vecmath::magnitude(vecmath::complex_multiply(inputs.a, inputs.b)));
+    }
+    if (inputs.show_quotient_ab) {
+        if (const auto quotient = vecmath::complex_divide(inputs.a, inputs.b)) {
+            max_magnitude = std::max(max_magnitude, vecmath::magnitude(*quotient));
+        }
+    }
+    if (inputs.show_quotient_ba) {
+        if (const auto quotient = vecmath::complex_divide(inputs.b, inputs.a)) {
+            max_magnitude = std::max(max_magnitude, vecmath::magnitude(*quotient));
+        }
     }
 
     if (max_magnitude <= 0.0) {

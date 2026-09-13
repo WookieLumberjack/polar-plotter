@@ -231,8 +231,8 @@ TEST_CASE("auto_fit_extent only folds in magnitudes of vectors currently shown",
     SECTION("sum and difference off: extent driven by A and B alone") {
         const PlotFrame extent = ui::auto_fit_extent(PlotInputs{
             .a = {3.0, 0.0}, .b = {0.0, 0.0}, .show_sum = false, .show_difference = false});
-        // max magnitude 3, margin 1.2 => target 3.6, desired interval 0.9 =>
-        // snaps up to 1.0 (next of the 1/2/5 sequence).
+        // max magnitude 3, margin 1.05 => target 3.15, desired interval 0.7875
+        // => snaps up to 1.0 (next of the 1/2/5 sequence).
         CHECK_THAT(extent.ring_interval(), WithinRel(1.0));
         CHECK_THAT(extent.extent(), WithinRel(4.0));
     }
@@ -244,7 +244,7 @@ TEST_CASE("auto_fit_extent only folds in magnitudes of vectors currently shown",
         // that fact rather than an opt-out.
         const PlotFrame extent =
             ui::auto_fit_extent(PlotInputs{.a = {1.0, 0.0}, .b = {8.0, 0.0}, .show_sum = false});
-        // max magnitude 8, target 9.6, desired interval 2.4 => snaps to 5.
+        // max magnitude 8, target 8.4, desired interval 2.1 => snaps to 5.
         CHECK_THAT(extent.ring_interval(), WithinRel(5.0));
         CHECK_THAT(extent.extent(), WithinRel(20.0));
     }
@@ -252,7 +252,7 @@ TEST_CASE("auto_fit_extent only folds in magnitudes of vectors currently shown",
     SECTION("sum shown grows the extent to cover it when it's the largest vector") {
         const PlotFrame extent = ui::auto_fit_extent(PlotInputs{
             .a = {3.0, 0.0}, .b = {3.0, 0.0}, .show_sum = true, .show_difference = false});
-        // sum = (6, 0), magnitude 6, target 7.2, desired 1.8 => snaps to 2.
+        // sum = (6, 0), magnitude 6, target 6.3, desired 1.575 => snaps to 2.
         CHECK_THAT(extent.ring_interval(), WithinRel(2.0));
         CHECK_THAT(extent.extent(), WithinRel(8.0));
     }
@@ -261,7 +261,7 @@ TEST_CASE("auto_fit_extent only folds in magnitudes of vectors currently shown",
         const PlotFrame extent = ui::auto_fit_extent(PlotInputs{
             .a = {3.0, 0.0}, .b = {3.0, 0.0}, .show_sum = false, .show_difference = false});
         // Ignoring the (hidden) sum's magnitude of 6, only A/B (magnitude 3)
-        // count: target 3.6, desired 0.9 => snaps to 1.
+        // count: target 3.15, desired 0.7875 => snaps to 1.
         CHECK_THAT(extent.ring_interval(), WithinRel(1.0));
         CHECK_THAT(extent.extent(), WithinRel(4.0));
     }
@@ -269,9 +269,71 @@ TEST_CASE("auto_fit_extent only folds in magnitudes of vectors currently shown",
     SECTION("difference shown grows the extent to cover it when it's the largest vector") {
         const PlotFrame extent = ui::auto_fit_extent(PlotInputs{
             .a = {5.0, 0.0}, .b = {-5.0, 0.0}, .show_sum = false, .show_difference = true});
-        // difference = (10, 0), magnitude 10, target 12, desired 3 => snaps to 5.
+        // difference = (10, 0), magnitude 10, target 10.5, desired 2.625 => snaps to 5.
         CHECK_THAT(extent.ring_interval(), WithinRel(5.0));
         CHECK_THAT(extent.extent(), WithinRel(20.0));
+    }
+
+    SECTION("B - A shown grows the extent to cover it when it's the largest vector") {
+        const PlotFrame extent = ui::auto_fit_extent(
+            PlotInputs{.a = {5.0, 0.0}, .b = {-5.0, 0.0}, .show_difference_ba = true});
+        // B - A = (-10, 0), magnitude 10, target 10.5, desired 2.625 => snaps to 5.
+        CHECK_THAT(extent.ring_interval(), WithinRel(5.0));
+        CHECK_THAT(extent.extent(), WithinRel(20.0));
+    }
+
+    SECTION("A x B (product) shown grows the extent to cover it when it's the largest vector") {
+        const PlotFrame extent =
+            ui::auto_fit_extent(PlotInputs{.a = {3.0, 0.0}, .b = {0.0, 4.0}, .show_product = true});
+        // product magnitude = |a| * |b| = 12, target 12.6, desired 3.15 => snaps to 5.
+        CHECK_THAT(extent.ring_interval(), WithinRel(5.0));
+        CHECK_THAT(extent.extent(), WithinRel(20.0));
+    }
+
+    SECTION("A x B (product) hidden: its magnitude does not affect the extent") {
+        const PlotFrame extent = ui::auto_fit_extent(
+            PlotInputs{.a = {3.0, 0.0}, .b = {0.0, 4.0}, .show_product = false});
+        // Ignoring the (hidden) product's magnitude of 12, only A/B (magnitude
+        // 4) count: target 4.2, desired 1.05 => snaps to 2.
+        CHECK_THAT(extent.ring_interval(), WithinRel(2.0));
+        CHECK_THAT(extent.extent(), WithinRel(8.0));
+    }
+
+    SECTION("A / B (quotient) shown grows the extent to cover it when it's the largest vector") {
+        const PlotFrame extent = ui::auto_fit_extent(
+            PlotInputs{.a = {2.0, 0.0}, .b = {0.0, 0.5}, .show_quotient_ab = true});
+        // quotient magnitude = |a| / |b| = 4, target 4.2, desired 1.05 => snaps to 2.
+        CHECK_THAT(extent.ring_interval(), WithinRel(2.0));
+        CHECK_THAT(extent.extent(), WithinRel(8.0));
+    }
+
+    SECTION("B / A (quotient) shown grows the extent to cover it when it's the largest vector") {
+        const PlotFrame extent = ui::auto_fit_extent(
+            PlotInputs{.a = {0.0, 0.5}, .b = {2.0, 0.0}, .show_quotient_ba = true});
+        // quotient magnitude = |b| / |a| = 4, target 4.2, desired 1.05 => snaps to 2.
+        CHECK_THAT(extent.ring_interval(), WithinRel(2.0));
+        CHECK_THAT(extent.extent(), WithinRel(8.0));
+    }
+
+    SECTION("a quotient with a zero divisor (undefined) is excluded rather than crashing") {
+        const PlotFrame extent = ui::auto_fit_extent(
+            PlotInputs{.a = {3.0, 0.0}, .b = {0.0, 0.0}, .show_quotient_ab = true});
+        // A / B is undefined (B is zero); falls back to A alone, magnitude 3,
+        // target 3.15, desired 0.7875 => snaps to 1.
+        CHECK_THAT(extent.ring_interval(), WithinRel(1.0));
+        CHECK_THAT(extent.extent(), WithinRel(4.0));
+    }
+
+    SECTION("a tighter margin fits a vector into a smaller ring interval than a looser one would") {
+        const PlotFrame extent = ui::auto_fit_extent(PlotInputs{.a = {1.8, 0.0}, .b = {0.0, 0.0}});
+        // magnitude 1.8, margin 1.05 => target 1.89, desired 0.4725 => snaps
+        // to 0.5 (extent 2.0, the vector reaches 90% of it). The old 1.2
+        // margin would have pushed target to 2.16 (desired 0.54), crossing
+        // the 0.5 boundary and snapping to 1.0 (extent 4.0, only 45%
+        // reached) -- this is the "outermost ring rarely used" case the
+        // tighter margin exists to shrink.
+        CHECK_THAT(extent.ring_interval(), WithinRel(0.5));
+        CHECK_THAT(extent.extent(), WithinRel(2.0));
     }
 }
 
@@ -285,7 +347,7 @@ TEST_CASE("auto_fit_extent edge cases: zero, very small, and very large vectors"
     SECTION("a very small vector still snaps to a small, non-zero nice interval") {
         const PlotFrame extent =
             ui::auto_fit_extent(PlotInputs{.a = {0.003, 0.0}, .b = {0.0, 0.0}});
-        // max magnitude 0.003, target 0.0036, desired 0.0009 => snaps to 0.001.
+        // max magnitude 0.003, target 0.00315, desired 0.0007875 => snaps to 0.001.
         CHECK_THAT(extent.ring_interval(), WithinRel(0.001));
         CHECK_THAT(extent.extent(), WithinRel(0.004));
     }
@@ -293,7 +355,7 @@ TEST_CASE("auto_fit_extent edge cases: zero, very small, and very large vectors"
     SECTION("a very large vector snaps to a large nice interval, never zero or degenerate") {
         const PlotFrame extent =
             ui::auto_fit_extent(PlotInputs{.a = {1234.0, 0.0}, .b = {0.0, 0.0}});
-        // max magnitude 1234, target 1480.8, desired 370.2 => snaps to 500.
+        // max magnitude 1234, target 1295.7, desired 323.925 => snaps to 500.
         CHECK_THAT(extent.ring_interval(), WithinRel(500.0));
         CHECK_THAT(extent.extent(), WithinRel(2000.0));
     }

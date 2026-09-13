@@ -10,6 +10,7 @@
 #include "polar_plotting/polar_plot.hpp"
 
 using Catch::Matchers::WithinAbs;
+using Catch::Matchers::WithinRel;
 using polarplot::AngleConvention;
 
 namespace {
@@ -102,6 +103,29 @@ TEST_CASE("arrowhead_wing_points collapses to the head for a zero-length segment
     REQUIRE_THAT(wings.first.y, WithinAbs(4.0, 1e-12));
     REQUIRE_THAT(wings.second.x, WithinAbs(3.0, 1e-12));
     REQUIRE_THAT(wings.second.y, WithinAbs(4.0, 1e-12));
+}
+
+TEST_CASE("head_frac_for_fixed_pixels converts a fixed pixel length into the matching fraction",
+          "[polar_plot][arrowhead]") {
+    SECTION("shaft much longer than the target: fraction is a small slice of it") {
+        // 14px head on a 200px shaft => 0.07.
+        CHECK_THAT(polarplot::head_frac_for_fixed_pixels(14.0, 200.0), WithinRel(0.07));
+    }
+
+    SECTION("shaft exactly the target length: would be 1.0 unclamped, so still hits the max") {
+        CHECK_THAT(polarplot::head_frac_for_fixed_pixels(14.0, 14.0), WithinRel(0.9));
+    }
+
+    SECTION("shaft shorter than the target: clamped to the max fraction, never exceeding it") {
+        // Would be > 1.0 unclamped (14 / 5 = 2.8); clamped to 0.9 so the head
+        // never overshoots past the tail.
+        CHECK_THAT(polarplot::head_frac_for_fixed_pixels(14.0, 5.0), WithinRel(0.9));
+    }
+
+    SECTION("zero or negative shaft length: no visible head rather than a division by zero") {
+        CHECK(polarplot::head_frac_for_fixed_pixels(14.0, 0.0) == 0.0);
+        CHECK(polarplot::head_frac_for_fixed_pixels(14.0, -3.0) == 0.0);
+    }
 }
 
 TEST_CASE("to_plotted_point preserves radius and remaps angle", "[polar_plot][angle_convention]") {
