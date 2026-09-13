@@ -682,3 +682,101 @@ TEST_CASE("clamp_to_rect clamps each axis independently", "[polar_plot][interact
     REQUIRE_THAT(clamped.x, WithinAbs(100.0, 1e-12));
     REQUIRE_THAT(clamped.y, WithinAbs(100.0, 1e-12));
 }
+
+// #83: hover_target's pixel-rect containment check, extracted as a pure,
+// tested predicate mirroring clamp_to_rect's (Point, PixelRect) argument
+// order so the two read as a matched pair.
+TEST_CASE("point_in_rect reports a point strictly inside the rect as true",
+          "[polar_plot][interaction]") {
+    constexpr polarplot::PixelRect rect{/*min=*/{0.0, 0.0}, /*max=*/{100.0, 200.0}};
+    CHECK(polarplot::point_in_rect({50.0, 150.0}, rect));
+}
+
+TEST_CASE(
+    "point_in_rect reports a point strictly outside the rect on each axis independently as "
+    "false",
+    "[polar_plot][interaction]") {
+    constexpr polarplot::PixelRect rect{/*min=*/{0.0, 0.0}, /*max=*/{100.0, 200.0}};
+
+    CHECK_FALSE(polarplot::point_in_rect({-50.0, 100.0}, rect));
+    CHECK_FALSE(polarplot::point_in_rect({150.0, 100.0}, rect));
+    CHECK_FALSE(polarplot::point_in_rect({50.0, -20.0}, rect));
+    CHECK_FALSE(polarplot::point_in_rect({50.0, 250.0}, rect));
+}
+
+TEST_CASE(
+    "point_in_rect treats each edge as inclusive, matching clamp_to_rect's boundary "
+    "convention",
+    "[polar_plot][interaction]") {
+    constexpr polarplot::PixelRect rect{/*min=*/{0.0, 0.0}, /*max=*/{100.0, 200.0}};
+
+    CHECK(polarplot::point_in_rect({0.0, 100.0}, rect));
+    CHECK(polarplot::point_in_rect({100.0, 100.0}, rect));
+    CHECK(polarplot::point_in_rect({50.0, 0.0}, rect));
+    CHECK(polarplot::point_in_rect({50.0, 200.0}, rect));
+}
+
+// #82: resolve_drag_target composes shift-snap then manual-scale clamp, in
+// that documented order, for draw_interactive_vector's dragging branch.
+TEST_CASE("resolve_drag_target passes the point through unchanged with no snap and auto-scale on",
+          "[polar_plot][interaction]") {
+    const polarplot::Point resolved = polarplot::resolve_drag_target(
+        {3.0, -2.0}, /*shift_snap=*/false, /*auto_scale=*/true, /*visible_extent=*/5.0);
+    REQUIRE_THAT(resolved.x, WithinAbs(3.0, 1e-12));
+    REQUIRE_THAT(resolved.y, WithinAbs(-2.0, 1e-12));
+}
+
+TEST_CASE("resolve_drag_target snaps the angle when shift_snap is set and auto-scale is on",
+          "[polar_plot][interaction]") {
+    // Mirrors snap_angle_to_increment's own "angle just past a multiple snaps
+    // down to it" case: the fixed 15 degree increment (#50), radius untouched.
+    constexpr double kIncrement = kPi / 12.0;
+    const double radius = 7.0;
+    const double angle = (kIncrement * 3.0) + (kIncrement * 0.1);
+    const polarplot::Point plotted{radius * std::cos(angle), radius * std::sin(angle)};
+
+    const polarplot::Point resolved = polarplot::resolve_drag_target(
+        plotted, /*shift_snap=*/true, /*auto_scale=*/true, /*visible_extent=*/5.0);
+
+    const double expected_angle = kIncrement * 3.0;
+    REQUIRE_THAT(resolved.x, WithinAbs(radius * std::cos(expected_angle), 1e-9));
+    REQUIRE_THAT(resolved.y, WithinAbs(radius * std::sin(expected_angle), 1e-9));
+    REQUIRE_THAT(std::hypot(resolved.x, resolved.y), WithinAbs(radius, 1e-9));
+}
+
+TEST_CASE("resolve_drag_target clamps to the extent when shift_snap is unset and auto-scale is off",
+          "[polar_plot][interaction]") {
+    const polarplot::Point resolved = polarplot::resolve_drag_target(
+        {10.0, -10.0}, /*shift_snap=*/false, /*auto_scale=*/false, /*visible_extent=*/5.0);
+    REQUIRE_THAT(resolved.x, WithinAbs(5.0, 1e-12));
+    REQUIRE_THAT(resolved.y, WithinAbs(-5.0, 1e-12));
+}
+
+TEST_CASE("resolve_drag_target snaps before clamping, so a snap that exits the extent is caught",
+          "[polar_plot][interaction]") {
+    // #49's original motivating case: a point within the extent on both axes
+    // pre-snap can still land outside it once snapped, because snapping
+    // rotates the point (preserving radius) rather than moving it inward.
+    // extent=5, radius=8, angle=5 degrees (closer to the 0 degree multiple
+    // than to 15): snapping first pins the angle to 0 (giving (8, 0)), then
+    // the manual-scale clamp catches the now out-of-extent x, landing on
+    // (5, 0) -- not the different point a clamp-then-snap order would give.
+    constexpr double kIncrement = kPi / 12.0;
+    const double radius = 8.0;
+    const double angle = kIncrement * (5.0 / 15.0);  // 5 degrees.
+    const polarplot::Point plotted{radius * std::cos(angle), radius * std::sin(angle)};
+
+    const polarplot::Point resolved = polarplot::resolve_drag_target(
+        plotted, /*shift_snap=*/true, /*auto_scale=*/false, /*visible_extent=*/5.0);
+
+    REQUIRE_THAT(resolved.x, WithinAbs(5.0, 1e-9));
+    REQUIRE_THAT(resolved.y, WithinAbs(0.0, 1e-9));
+}
+
+TEST_CASE("resolve_drag_target treats the extent boundary as inclusive",
+          "[polar_plot][interaction]") {
+    const polarplot::Point resolved = polarplot::resolve_drag_target(
+        {5.0, 5.0}, /*shift_snap=*/false, /*auto_scale=*/false, /*visible_extent=*/5.0);
+    REQUIRE_THAT(resolved.x, WithinAbs(5.0, 1e-12));
+    REQUIRE_THAT(resolved.y, WithinAbs(5.0, 1e-12));
+}
