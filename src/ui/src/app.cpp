@@ -378,7 +378,17 @@ void App::draw_plot() {
         .manual_ring_interval = static_cast<double>(manual_ring_interval_),
     });
 
-    // The grid's outer ring is drawn at exactly `plan.extent.extent()` -- the
+    // Freeze the plot's view for a drag's whole duration (see
+    // drag_frozen_extent_'s doc comment): only refresh it from this frame's
+    // fresh auto-fit/manual plan.extent while neither vector is already
+    // mid-drag (i.e. the value here hasn't itself been influenced by the
+    // drag it would otherwise be used to interpret).
+    if (!(a_.dragging_ || b_.dragging_)) {
+        drag_frozen_extent_ = plan.extent;
+    }
+    const polarplot::PlotFrame& view_frame = drag_frozen_extent_;
+
+    // The grid's outer ring is drawn at exactly `view_frame.extent()` -- the
     // same PlotFrame handed to begin_vector_plot and draw_rotation_indicator
     // -- so the scale ruler's tick positions always land exactly on the
     // rings they label (PlotFrame's constructor keeps the two in sync).
@@ -387,12 +397,12 @@ void App::draw_plot() {
     // which would move the rings off the ruler's ticks) so the grid's spoke
     // degree labels, drawn just outside the outer ring, have room without
     // getting clipped.
-    const double extent = plan.extent.extent();
+    const double extent = view_frame.extent();
 
-    if (!polarplot::begin_vector_plot("##polar", plan.extent)) {
+    if (!polarplot::begin_vector_plot("##polar", view_frame)) {
         return;
     }
-    polarplot::draw_polar_grid(plan.extent, plan.convention);
+    polarplot::draw_polar_grid(view_frame, plan.convention);
 
     // Hover/click-drag for A/B (see #44/#47/#48): whichever tip is under the
     // cursor is this frame's hit-test target; draw_interactive_vector turns
@@ -475,7 +485,7 @@ void App::draw_plot() {
     rotation_indicator_style.b = 1.0F;
     rotation_indicator_style.a = 1.0F;
     rotation_indicator_style.thickness = line_width_;
-    polarplot::draw_rotation_indicator(plan.extent, plan.rotation_indicator_sweep_sign,
+    polarplot::draw_rotation_indicator(view_frame, plan.rotation_indicator_sweep_sign,
                                        rotation_indicator_style);
     polarplot::end_vector_plot();
 }
