@@ -16,10 +16,10 @@
 #include "polar_plotting/polar_plot.hpp"
 #include "ui/config.hpp"
 #include "ui/derived_vectors.hpp"
+#include "ui/named_vector_spec.hpp"
 #include "ui/plot_plan.hpp"
 #include "ui/polar_display.hpp"
 #include "ui/theme.hpp"
-#include "ui/vector_palette.hpp"
 #include "ui/zero_direction.hpp"
 #include "vector_math/vec2.hpp"
 
@@ -127,19 +127,6 @@ void App::draw_vector_input(const char* label_prefix, VectorInput& input) {
 }
 
 void App::draw_derived_vectors_table(const DerivedVectors& derived) {
-    struct Row {
-        const char* name{nullptr};
-        std::optional<vecmath::Vec2> vector;
-    };
-    const std::array<Row, 6> rows{{
-        {"A + B", derived.sum},
-        {"A - B", derived.difference_ab},
-        {"B - A", derived.difference_ba},
-        {"A x B", derived.product},
-        {"A / B", derived.quotient_ab},
-        {"B / A", derived.quotient_ba},
-    }};
-
     if (!ImGui::BeginTable("derived_vectors", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
         return;
     }
@@ -150,20 +137,27 @@ void App::draw_derived_vectors_table(const DerivedVectors& derived) {
     ImGui::TableSetupColumn("Imag");
     ImGui::TableHeadersRow();
 
-    for (const Row& row : rows) {
+    // Iterates kNamedVectorSpecs directly (skipping A/B's accessor-less
+    // entries) rather than a second hand-written label list, so this table
+    // can't drift from plan_plot/auto_fit_extent's identity source -- see
+    // ui/named_vector_spec.hpp.
+    for (const NamedVectorSpec& spec : kNamedVectorSpecs) {
+        if (spec.accessor == nullptr) {
+            continue;
+        }
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::TextUnformatted(row.name);
-        if (row.vector) {
-            const PolarDisplay display = to_polar_display(*row.vector);
+        ImGui::TextUnformatted(spec.label);
+        if (const std::optional<vecmath::Vec2> vector = derived.*spec.accessor) {
+            const PolarDisplay display = to_polar_display(*vector);
             ImGui::TableSetColumnIndex(1);
             ImGui::Text("%.3f", static_cast<double>(display.amplitude));
             ImGui::TableSetColumnIndex(2);
             ImGui::Text("%.2f", static_cast<double>(display.phase_deg));
             ImGui::TableSetColumnIndex(3);
-            ImGui::Text("%.3f", row.vector->x);
+            ImGui::Text("%.3f", vector->x);
             ImGui::TableSetColumnIndex(4);
-            ImGui::Text("%.3f", row.vector->y);
+            ImGui::Text("%.3f", vector->y);
         } else {
             for (int col = 1; col <= 4; ++col) {
                 ImGui::TableSetColumnIndex(col);
@@ -174,7 +168,9 @@ void App::draw_derived_vectors_table(const DerivedVectors& derived) {
     ImGui::EndTable();
 }
 
-App::App() { apply_current_theme(); }
+App::App() : derived_(compute_derived_vectors(to_vec(a_.xy), to_vec(b_.xy))) {
+    apply_current_theme();
+}
 
 App::App(std::filesystem::path config_path) : config_path_(std::move(config_path)) {
     if (auto cfg = load_config(config_path_)) {
@@ -191,6 +187,10 @@ App::App(std::filesystem::path config_path) : config_path_(std::move(config_path
         manual_ring_interval_ = cfg->manual_ring_interval;
         theme_ = cfg->theme;
     }
+    // a_/b_ may have just been overwritten from cfg above, so derived_ is
+    // (re)computed here rather than relying on the member initializer used by
+    // the default constructor -- see derived_'s doc comment.
+    derived_ = compute_derived_vectors(to_vec(a_.xy), to_vec(b_.xy));
     apply_current_theme();
 }
 
@@ -376,19 +376,23 @@ void App::draw_controls() {
     ImGui::SameLine();
     ImGui::Checkbox("Show A x B", &show_product_);
 
-    const DerivedVectors derived = compute_derived_vectors(a, b);
+    // Single call site for compute_derived_vectors (see derived_'s doc
+    // comment): this same frame's table below and next frame's draw_plot()
+    // (via PlotInputs::derived) both read this member instead of
+    // recomputing.
+    derived_ = compute_derived_vectors(a, b);
 
-    ImGui::BeginDisabled(!derived.quotient_ab.has_value());
+    ImGui::BeginDisabled(!derived_.quotient_ab.has_value());
     ImGui::Checkbox("Show A / B", &show_quotient_ab_);
     ImGui::EndDisabled();
-    if (!derived.quotient_ab) {
+    if (!derived_.quotient_ab) {
         show_quotient_ab_ = false;
     }
     ImGui::SameLine();
-    ImGui::BeginDisabled(!derived.quotient_ba.has_value());
+    ImGui::BeginDisabled(!derived_.quotient_ba.has_value());
     ImGui::Checkbox("Show B / A", &show_quotient_ba_);
     ImGui::EndDisabled();
-    if (!derived.quotient_ba) {
+    if (!derived_.quotient_ba) {
         show_quotient_ba_ = false;
     }
 
@@ -418,7 +422,7 @@ void App::draw_controls() {
     ImGui::Text("angle(A, B) = %.2f deg", vecmath::angle_between(a, b) * kRadToDeg);
 
     ImGui::SeparatorText("Derived vectors");
-    draw_derived_vectors_table(derived);
+    draw_derived_vectors_table(derived_);
 }
 
 void App::apply_interactive_result(VectorInput& input,
@@ -441,6 +445,7 @@ void App::draw_plot() {
     const PlotPlan plan = plan_plot(PlotInputs{
         .a = a,
         .b = b,
+        .derived = derived_,
         .show_sum = show_sum_,
         .show_difference = show_difference_,
         .show_tip_to_tail = show_tip_to_tail_,
@@ -477,7 +482,7 @@ void App::draw_plot() {
         .tip_marker_color = to_marker_color(theme_style(theme_).text),
         .line_width = line_width_,
         .marker_style = marker_style_,
-        .color_for = &vector_color,
+        .color_for = &named_vector_color,
     };
 
     const std::optional<polarplot::SceneResult> result =

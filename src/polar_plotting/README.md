@@ -10,49 +10,47 @@ statement in code.
 
 ## Per-frame lifecycle
 
-`polar_plotting` mirrors ImPlot's own `BeginPlot`/`EndPlot` pattern: every
-frame, a caller opens a plot, issues zero or more draw calls into it, then
-closes it.
+The module's one real entry point is `draw_scene`: given a `PlotFrame`, a
+`PlotPlan` (what to draw this frame — A, B, whichever derived vectors and
+annotations are currently toggled on), and a `DrawStyle` (presentation
+choices: marker style, line width, per-label color lookup), it draws the
+entire polar plot body for the frame and returns an optional `SceneResult`
+(A/B's post-interaction state, for a caller that wants to react to a drag).
 
 ```cpp
-if (polarplot::begin_vector_plot("Vectors", frame /* ...or its constituent fields */)) {
-    polarplot::draw_polar_grid(frame, convention);
-    polarplot::draw_rotation_indicator(frame, sweep_sign);
-    polarplot::draw_vector("A", head, convention, polarplot::TipMarkerStyle::kDot);
-    // ...further draw_arrow / draw_vector / draw_annotation_vector /
-    // draw_angle_arc calls...
-
-    polarplot::end_vector_plot();
-}
+const std::optional<polarplot::SceneResult> result =
+    polarplot::draw_scene(view_frame, plan, style, a_dragging, b_dragging);
 ```
 
-(Exactly how each entry point consumes `PlotFrame` — the whole struct, or a
-destructured field or two — is left to that function's own signature; what's
-fixed is that all three entry points below are driven from the *same*
-`PlotFrame` value for a given frame, so they can never disagree about
-extent, ring interval, or ring count.)
+`draw_scene` itself spans `begin_vector_plot` through `end_vector_plot`
+internally — including the "call `end_vector_plot` iff `begin_vector_plot`
+returned `true`" contract `ImPlot::BeginPlot`/`EndPlot` already has (ImPlot
+may cull an off-screen or collapsed plot and skip its internal setup), so a
+`draw_scene` caller never has to reason about that itself. A caller composes
+`PlotPlan`/`DrawStyle` fresh each frame from whatever toggles/state it owns
+(e.g. `ui::plan_plot`) and re-issues the single `draw_scene` call every
+frame, the same way it would with ImPlot's own per-frame draw calls — none
+of `polar_plotting`'s state persists across frames on its own.
 
-- `begin_vector_plot` returns `true` when the plot is visible. Call
-  `end_vector_plot` exactly once **iff** `begin_vector_plot` returned `true`
-  — exactly the contract `ImPlot::BeginPlot`/`EndPlot` already has, and for
-  the same reason (ImPlot may cull an off-screen or collapsed plot and skip
-  its internal setup).
-- Everything drawn between the two calls — grid, rotation indicator, named
-  vectors, annotation vectors, angle arcs — is a "draw this now" primitive.
-  None of them retain state across frames or decide on their own whether
-  they should render this frame; the caller re-issues every draw call, every
-  frame, for whatever should currently be visible.
-- `begin_vector_plot`, `draw_polar_grid`, and `draw_rotation_indicator` are
-  three independent entry points, not one composite call: the rotation
-  indicator's per-frame draw-or-not decision is separate from the grid's, so
-  a caller may open a plot and draw a grid without a rotation indicator, or
-  vice versa.
+`begin_vector_plot`, `end_vector_plot`, `draw_polar_grid`,
+`draw_rotation_indicator`, `draw_vector`, `draw_annotation_vector`,
+`draw_angle_arc`, and the rest of the individual "draw this now" primitives
+`draw_scene` composes are still public — mainly so they can be exercised as
+independently-tested pure/near-pure seams (see `tests/polar_plot_tests.cpp`)
+and so a caller with an unusual per-frame composition need isn't forced
+through `draw_scene`'s fixed sequencing. A caller assembling its own
+`begin_vector_plot`/.../`end_vector_plot` sequence by hand, instead of going
+through `draw_scene`, is still responsible for the same
+`begin_vector_plot`/`end_vector_plot` pairing contract and for driving every
+call from the same `PlotFrame` value for that frame, so the scale ruler,
+grid rings, and rotation indicator's radius can't disagree.
 
 ## What a caller composes and supplies each frame
 
 `polar_plotting` draws geometry; it does not decide what that geometry means.
-Two small, domain-free value types carry every per-frame decision a caller
-must have already made before calling in:
+`PlotPlan` and `DrawStyle` (the two values `draw_scene` takes) are themselves
+built from two smaller, domain-free value types that carry every per-frame
+decision a caller must have already made before calling in:
 
 - **`AngleConvention`** — where 0 is drawn (`zero_direction`, radians, in the
   plot's own coordinate frame) and which way angle increases as it grows

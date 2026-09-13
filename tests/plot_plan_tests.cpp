@@ -5,6 +5,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include "polar_plotting/polar_plot.hpp"
+#include "ui/derived_vectors.hpp"
 #include "ui/plot_plan.hpp"
 #include "vector_math/vec2.hpp"
 
@@ -40,90 +41,117 @@ T require_value(const std::optional<T>& opt) {
 constexpr Vec2 kA{3.0, 1.0};
 constexpr Vec2 kB{-1.0, 2.0};
 
+// PlotInputs::derived is now the single source plan_plot/auto_fit_extent read
+// derived-vector values from (see ui::App::draw_controls, the production
+// single call site for compute_derived_vectors). These thin wrappers fill it
+// in from whatever `a`/`b` a test case passes, exactly as App does each
+// frame, so every test call site below can go on just naming the toggles it
+// cares about instead of also spelling out `.derived` by hand everywhere.
+ui::PlotPlan plan_plot_from(PlotInputs inputs) {
+    inputs.derived = ui::compute_derived_vectors(inputs.a, inputs.b);
+    return ui::plan_plot(inputs);
+}
+
+PlotFrame auto_fit_extent_from(PlotInputs inputs) {
+    inputs.derived = ui::compute_derived_vectors(inputs.a, inputs.b);
+    return ui::auto_fit_extent(inputs);
+}
+
+// PlotPlan no longer carries the six named optional fields (sum, difference,
+// etc.) -- derived_vectors (see its push-order contract) is the single place
+// a derived vector's presence/value is now observable, keyed by its exact
+// label. nullopt when `label` isn't present in plan.derived_vectors at all.
+std::optional<polarplot::Point> derived_point(const PlotPlan& plan, const std::string& label) {
+    for (const PlotPlan::DerivedVector& entry : plan.derived_vectors) {
+        if (label == entry.label) {
+            return entry.point;
+        }
+    }
+    return std::nullopt;
+}
+
 }  // namespace
 
 TEST_CASE("plan_plot always populates a, b, and the composed convention", "[plot_plan]") {
     const PlotInputs inputs{.a = kA, .b = kB};
 
-    const PlotPlan plan = ui::plan_plot(inputs);
+    const PlotPlan plan = plan_plot_from(inputs);
 
     CHECK(points_equal(plan.a, {kA.x, kA.y}));
     CHECK(points_equal(plan.b, {kB.x, kB.y}));
     CHECK(plan.convention.zero_direction == 0.0);
     CHECK(plan.convention.angle_sign == 1.0);
-    CHECK_FALSE(plan.sum.has_value());
-    CHECK_FALSE(plan.difference.has_value());
     CHECK(plan.tip_to_tail_annotations.empty());
     CHECK_FALSE(plan.difference_segment.has_value());
     CHECK_FALSE(plan.difference_segment_ba.has_value());
     CHECK_FALSE(plan.zero_direction_arc_angle.has_value());
-    CHECK_FALSE(plan.difference_ba.has_value());
-    CHECK_FALSE(plan.product.has_value());
-    CHECK_FALSE(plan.quotient_ab.has_value());
-    CHECK_FALSE(plan.quotient_ba.has_value());
+    CHECK(plan.derived_vectors.empty());
 }
 
 TEST_CASE("plan_plot populates the plain-arrow derived vectors only when toggled on",
           "[plot_plan]") {
     SECTION("all four off: none present") {
-        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA, .b = kB});
-        CHECK_FALSE(plan.difference_ba.has_value());
-        CHECK_FALSE(plan.product.has_value());
-        CHECK_FALSE(plan.quotient_ab.has_value());
-        CHECK_FALSE(plan.quotient_ba.has_value());
+        const PlotPlan plan = plan_plot_from(PlotInputs{.a = kA, .b = kB});
+        CHECK_FALSE(derived_point(plan, "B - A").has_value());
+        CHECK_FALSE(derived_point(plan, "A x B").has_value());
+        CHECK_FALSE(derived_point(plan, "A / B").has_value());
+        CHECK_FALSE(derived_point(plan, "B / A").has_value());
     }
 
     SECTION("show_difference_ba on: B - A present") {
         const PlotPlan plan =
-            ui::plan_plot(PlotInputs{.a = kA, .b = kB, .show_difference_ba = true});
+            plan_plot_from(PlotInputs{.a = kA, .b = kB, .show_difference_ba = true});
         const Vec2 expected = kB - kA;
-        CHECK(points_equal(require_value(plan.difference_ba), {expected.x, expected.y}));
+        CHECK(points_equal(require_value(derived_point(plan, "B - A")), {expected.x, expected.y}));
     }
 
     SECTION("show_product on: A x B present") {
-        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA, .b = kB, .show_product = true});
+        const PlotPlan plan = plan_plot_from(PlotInputs{.a = kA, .b = kB, .show_product = true});
         const Vec2 expected = vecmath::complex_multiply(kA, kB);
-        CHECK(points_equal(require_value(plan.product), {expected.x, expected.y}));
+        CHECK(points_equal(require_value(derived_point(plan, "A x B")), {expected.x, expected.y}));
     }
 
     SECTION("show_quotient_ab on: A / B present") {
-        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA, .b = kB, .show_quotient_ab = true});
+        const PlotPlan plan =
+            plan_plot_from(PlotInputs{.a = kA, .b = kB, .show_quotient_ab = true});
         const Vec2 expected = require_value(vecmath::complex_divide(kA, kB));
-        CHECK(points_equal(require_value(plan.quotient_ab), {expected.x, expected.y}));
+        CHECK(points_equal(require_value(derived_point(plan, "A / B")), {expected.x, expected.y}));
     }
 
     SECTION("show_quotient_ba on: B / A present") {
-        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA, .b = kB, .show_quotient_ba = true});
+        const PlotPlan plan =
+            plan_plot_from(PlotInputs{.a = kA, .b = kB, .show_quotient_ba = true});
         const Vec2 expected = require_value(vecmath::complex_divide(kB, kA));
-        CHECK(points_equal(require_value(plan.quotient_ba), {expected.x, expected.y}));
+        CHECK(points_equal(require_value(derived_point(plan, "B / A")), {expected.x, expected.y}));
     }
 
     SECTION("show_quotient_ab on but B is zero: quotient stays absent despite the toggle") {
         const PlotPlan plan =
-            ui::plan_plot(PlotInputs{.a = kA, .b = Vec2{0.0, 0.0}, .show_quotient_ab = true});
-        CHECK_FALSE(plan.quotient_ab.has_value());
+            plan_plot_from(PlotInputs{.a = kA, .b = Vec2{0.0, 0.0}, .show_quotient_ab = true});
+        CHECK_FALSE(derived_point(plan, "A / B").has_value());
     }
 }
 
 TEST_CASE("sum shown/hidden x tip-to-tail on/off", "[plot_plan]") {
     SECTION("sum hidden: no sum, no tip-to-tail annotations from the sum side") {
-        const PlotPlan plan = ui::plan_plot(
+        const PlotPlan plan = plan_plot_from(
             PlotInputs{.a = kA, .b = kB, .show_sum = false, .show_tip_to_tail = true});
-        CHECK_FALSE(plan.sum.has_value());
+        CHECK_FALSE(derived_point(plan, "A + B").has_value());
         CHECK(plan.tip_to_tail_annotations.empty());
     }
 
     SECTION("sum shown, tip-to-tail off: sum present, no annotations") {
-        const PlotPlan plan = ui::plan_plot(
+        const PlotPlan plan = plan_plot_from(
             PlotInputs{.a = kA, .b = kB, .show_sum = true, .show_tip_to_tail = false});
-        CHECK(points_equal(require_value(plan.sum), {(kA + kB).x, (kA + kB).y}));
+        CHECK(
+            points_equal(require_value(derived_point(plan, "A + B")), {(kA + kB).x, (kA + kB).y}));
         CHECK(plan.tip_to_tail_annotations.empty());
     }
 
     SECTION("sum shown, tip-to-tail on: sum present, both parallelogram paths included") {
-        const PlotPlan plan =
-            ui::plan_plot(PlotInputs{.a = kA, .b = kB, .show_sum = true, .show_tip_to_tail = true});
-        REQUIRE(plan.sum.has_value());
+        const PlotPlan plan = plan_plot_from(
+            PlotInputs{.a = kA, .b = kB, .show_sum = true, .show_tip_to_tail = true});
+        CHECK(derived_point(plan, "A + B").has_value());
         REQUIRE(plan.tip_to_tail_annotations.size() == 2);
         CHECK(annotations_equal(plan.tip_to_tail_annotations[0], {{kA.x, kA.y}, {kB.x, kB.y}}));
         CHECK(annotations_equal(plan.tip_to_tail_annotations[1], {{kB.x, kB.y}, {kA.x, kA.y}}));
@@ -133,55 +161,56 @@ TEST_CASE("sum shown/hidden x tip-to-tail on/off", "[plot_plan]") {
 TEST_CASE("difference shown/hidden x tip-to-tail on/off x difference-segment on/off",
           "[plot_plan]") {
     SECTION("difference hidden: no difference, no annotations regardless of the other toggles") {
-        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA,
-                                                       .b = kB,
-                                                       .show_difference = false,
-                                                       .show_tip_to_tail = true,
-                                                       .show_difference_segment = true});
-        CHECK_FALSE(plan.difference.has_value());
+        const PlotPlan plan = plan_plot_from(PlotInputs{.a = kA,
+                                                        .b = kB,
+                                                        .show_difference = false,
+                                                        .show_tip_to_tail = true,
+                                                        .show_difference_segment = true});
+        CHECK_FALSE(derived_point(plan, "A - B").has_value());
         CHECK(plan.tip_to_tail_annotations.empty());
         CHECK_FALSE(plan.difference_segment.has_value());
     }
 
     SECTION("difference shown, both overlays off: difference present, no annotations") {
-        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA,
-                                                       .b = kB,
-                                                       .show_difference = true,
-                                                       .show_tip_to_tail = false,
-                                                       .show_difference_segment = false});
-        CHECK(points_equal(require_value(plan.difference), {(kA - kB).x, (kA - kB).y}));
+        const PlotPlan plan = plan_plot_from(PlotInputs{.a = kA,
+                                                        .b = kB,
+                                                        .show_difference = true,
+                                                        .show_tip_to_tail = false,
+                                                        .show_difference_segment = false});
+        CHECK(
+            points_equal(require_value(derived_point(plan, "A - B")), {(kA - kB).x, (kA - kB).y}));
         CHECK(plan.tip_to_tail_annotations.empty());
         CHECK_FALSE(plan.difference_segment.has_value());
     }
 
     SECTION("difference shown, tip-to-tail on only: one annotation, -b from a's tip") {
-        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA,
-                                                       .b = kB,
-                                                       .show_difference = true,
-                                                       .show_tip_to_tail = true,
-                                                       .show_difference_segment = false});
+        const PlotPlan plan = plan_plot_from(PlotInputs{.a = kA,
+                                                        .b = kB,
+                                                        .show_difference = true,
+                                                        .show_tip_to_tail = true,
+                                                        .show_difference_segment = false});
         REQUIRE(plan.tip_to_tail_annotations.size() == 1);
         CHECK(annotations_equal(plan.tip_to_tail_annotations[0], {{kA.x, kA.y}, {-kB.x, -kB.y}}));
         CHECK_FALSE(plan.difference_segment.has_value());
     }
 
     SECTION("difference shown, difference-segment on only: segment from b's tip to a's tip") {
-        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA,
-                                                       .b = kB,
-                                                       .show_difference = true,
-                                                       .show_tip_to_tail = false,
-                                                       .show_difference_segment = true});
+        const PlotPlan plan = plan_plot_from(PlotInputs{.a = kA,
+                                                        .b = kB,
+                                                        .show_difference = true,
+                                                        .show_tip_to_tail = false,
+                                                        .show_difference_segment = true});
         CHECK(plan.tip_to_tail_annotations.empty());
         CHECK(annotations_equal(require_value(plan.difference_segment),
                                 {{kB.x, kB.y}, {(kA - kB).x, (kA - kB).y}}));
     }
 
     SECTION("difference shown, both overlays on: both present together") {
-        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA,
-                                                       .b = kB,
-                                                       .show_difference = true,
-                                                       .show_tip_to_tail = true,
-                                                       .show_difference_segment = true});
+        const PlotPlan plan = plan_plot_from(PlotInputs{.a = kA,
+                                                        .b = kB,
+                                                        .show_difference = true,
+                                                        .show_tip_to_tail = true,
+                                                        .show_difference_segment = true});
         REQUIRE(plan.tip_to_tail_annotations.size() == 1);
         REQUIRE(plan.difference_segment.has_value());
     }
@@ -190,66 +219,67 @@ TEST_CASE("difference shown/hidden x tip-to-tail on/off x difference-segment on/
 TEST_CASE("difference_ba shown/hidden x tip-to-tail on/off x difference-segment on/off",
           "[plot_plan]") {
     SECTION("difference_ba hidden: no B-A annotations regardless of the other toggles") {
-        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA,
-                                                       .b = kB,
-                                                       .show_tip_to_tail = true,
-                                                       .show_difference_segment = true,
-                                                       .show_difference_ba = false});
-        CHECK_FALSE(plan.difference_ba.has_value());
+        const PlotPlan plan = plan_plot_from(PlotInputs{.a = kA,
+                                                        .b = kB,
+                                                        .show_tip_to_tail = true,
+                                                        .show_difference_segment = true,
+                                                        .show_difference_ba = false});
+        CHECK_FALSE(derived_point(plan, "B - A").has_value());
         CHECK(plan.tip_to_tail_annotations.empty());
         CHECK_FALSE(plan.difference_segment_ba.has_value());
     }
 
     SECTION("difference_ba shown, both overlays off: B-A present, no annotations") {
-        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA,
-                                                       .b = kB,
-                                                       .show_tip_to_tail = false,
-                                                       .show_difference_segment = false,
-                                                       .show_difference_ba = true});
-        CHECK(points_equal(require_value(plan.difference_ba), {(kB - kA).x, (kB - kA).y}));
+        const PlotPlan plan = plan_plot_from(PlotInputs{.a = kA,
+                                                        .b = kB,
+                                                        .show_tip_to_tail = false,
+                                                        .show_difference_segment = false,
+                                                        .show_difference_ba = true});
+        CHECK(
+            points_equal(require_value(derived_point(plan, "B - A")), {(kB - kA).x, (kB - kA).y}));
         CHECK(plan.tip_to_tail_annotations.empty());
         CHECK_FALSE(plan.difference_segment_ba.has_value());
     }
 
     SECTION("difference_ba shown, tip-to-tail on only: one annotation, -a from b's tip") {
-        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA,
-                                                       .b = kB,
-                                                       .show_tip_to_tail = true,
-                                                       .show_difference_segment = false,
-                                                       .show_difference_ba = true});
+        const PlotPlan plan = plan_plot_from(PlotInputs{.a = kA,
+                                                        .b = kB,
+                                                        .show_tip_to_tail = true,
+                                                        .show_difference_segment = false,
+                                                        .show_difference_ba = true});
         REQUIRE(plan.tip_to_tail_annotations.size() == 1);
         CHECK(annotations_equal(plan.tip_to_tail_annotations[0], {{kB.x, kB.y}, {-kA.x, -kA.y}}));
         CHECK_FALSE(plan.difference_segment_ba.has_value());
     }
 
     SECTION("difference_ba shown, difference-segment on only: segment from a's tip to b's tip") {
-        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA,
-                                                       .b = kB,
-                                                       .show_tip_to_tail = false,
-                                                       .show_difference_segment = true,
-                                                       .show_difference_ba = true});
+        const PlotPlan plan = plan_plot_from(PlotInputs{.a = kA,
+                                                        .b = kB,
+                                                        .show_tip_to_tail = false,
+                                                        .show_difference_segment = true,
+                                                        .show_difference_ba = true});
         CHECK(plan.tip_to_tail_annotations.empty());
         CHECK(annotations_equal(require_value(plan.difference_segment_ba),
                                 {{kA.x, kA.y}, {(kB - kA).x, (kB - kA).y}}));
     }
 
     SECTION("difference_ba shown, both overlays on: both present together") {
-        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA,
-                                                       .b = kB,
-                                                       .show_tip_to_tail = true,
-                                                       .show_difference_segment = true,
-                                                       .show_difference_ba = true});
+        const PlotPlan plan = plan_plot_from(PlotInputs{.a = kA,
+                                                        .b = kB,
+                                                        .show_tip_to_tail = true,
+                                                        .show_difference_segment = true,
+                                                        .show_difference_ba = true});
         REQUIRE(plan.tip_to_tail_annotations.size() == 1);
         REQUIRE(plan.difference_segment_ba.has_value());
     }
 
     SECTION("degenerate a == b: both directions collapse to zero-length constructions") {
-        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA,
-                                                       .b = kA,
-                                                       .show_difference = true,
-                                                       .show_tip_to_tail = true,
-                                                       .show_difference_segment = true,
-                                                       .show_difference_ba = true});
+        const PlotPlan plan = plan_plot_from(PlotInputs{.a = kA,
+                                                        .b = kA,
+                                                        .show_difference = true,
+                                                        .show_tip_to_tail = true,
+                                                        .show_difference_segment = true,
+                                                        .show_difference_ba = true});
         REQUIRE(plan.tip_to_tail_annotations.size() == 2);
         CHECK(annotations_equal(plan.tip_to_tail_annotations[0], {{kA.x, kA.y}, {-kA.x, -kA.y}}));
         CHECK(annotations_equal(plan.tip_to_tail_annotations[1], {{kA.x, kA.y}, {-kA.x, -kA.y}}));
@@ -262,15 +292,15 @@ TEST_CASE("difference_ba shown/hidden x tip-to-tail on/off x difference-segment 
 
 TEST_CASE("both difference directions shown together: both constructions render simultaneously",
           "[plot_plan]") {
-    const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA,
-                                                   .b = kB,
-                                                   .show_difference = true,
-                                                   .show_tip_to_tail = true,
-                                                   .show_difference_segment = true,
-                                                   .show_difference_ba = true});
+    const PlotPlan plan = plan_plot_from(PlotInputs{.a = kA,
+                                                    .b = kB,
+                                                    .show_difference = true,
+                                                    .show_tip_to_tail = true,
+                                                    .show_difference_segment = true,
+                                                    .show_difference_ba = true});
 
-    REQUIRE(plan.difference.has_value());
-    REQUIRE(plan.difference_ba.has_value());
+    CHECK(derived_point(plan, "A - B").has_value());
+    CHECK(derived_point(plan, "B - A").has_value());
     // Push order: A - B's tip-to-tail annotation precedes B - A's.
     REQUIRE(plan.tip_to_tail_annotations.size() == 2);
     CHECK(annotations_equal(plan.tip_to_tail_annotations[0], {{kA.x, kA.y}, {-kB.x, -kB.y}}));
@@ -286,46 +316,48 @@ TEST_CASE("zero-direction arc: transient focus x persistent toggle", "[plot_plan
 
     SECTION("neither focused nor persistent: no arc") {
         const PlotPlan plan =
-            ui::plan_plot(PlotInputs{.a = kA,
-                                     .b = kB,
-                                     .zero_direction_deg = kZeroDirectionDeg,
-                                     .zero_direction_input_focused = false,
-                                     .show_zero_direction_arc_persistent = false});
+            plan_plot_from(PlotInputs{.a = kA,
+                                      .b = kB,
+                                      .zero_direction_deg = kZeroDirectionDeg,
+                                      .zero_direction_input_focused = false,
+                                      .show_zero_direction_arc_persistent = false});
         CHECK_FALSE(plan.zero_direction_arc_angle.has_value());
     }
 
     SECTION("focused only: arc at the composed zero direction") {
         const PlotPlan plan =
-            ui::plan_plot(PlotInputs{.a = kA,
-                                     .b = kB,
-                                     .zero_direction_deg = kZeroDirectionDeg,
-                                     .zero_direction_input_focused = true,
-                                     .show_zero_direction_arc_persistent = false});
+            plan_plot_from(PlotInputs{.a = kA,
+                                      .b = kB,
+                                      .zero_direction_deg = kZeroDirectionDeg,
+                                      .zero_direction_input_focused = true,
+                                      .show_zero_direction_arc_persistent = false});
         CHECK(require_value(plan.zero_direction_arc_angle) == plan.convention.zero_direction);
     }
 
     SECTION("persistent only: arc shown") {
-        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA,
-                                                       .b = kB,
-                                                       .zero_direction_deg = kZeroDirectionDeg,
-                                                       .zero_direction_input_focused = false,
-                                                       .show_zero_direction_arc_persistent = true});
+        const PlotPlan plan =
+            plan_plot_from(PlotInputs{.a = kA,
+                                      .b = kB,
+                                      .zero_direction_deg = kZeroDirectionDeg,
+                                      .zero_direction_input_focused = false,
+                                      .show_zero_direction_arc_persistent = true});
         CHECK(require_value(plan.zero_direction_arc_angle) == plan.convention.zero_direction);
     }
 
     SECTION("both focused and persistent: arc still shown (OR, not exclusive)") {
-        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA,
-                                                       .b = kB,
-                                                       .zero_direction_deg = kZeroDirectionDeg,
-                                                       .zero_direction_input_focused = true,
-                                                       .show_zero_direction_arc_persistent = true});
+        const PlotPlan plan =
+            plan_plot_from(PlotInputs{.a = kA,
+                                      .b = kB,
+                                      .zero_direction_deg = kZeroDirectionDeg,
+                                      .zero_direction_input_focused = true,
+                                      .show_zero_direction_arc_persistent = true});
         CHECK(require_value(plan.zero_direction_arc_angle) == plan.convention.zero_direction);
     }
 }
 
 TEST_CASE("auto_fit_extent only folds in magnitudes of vectors currently shown", "[plot_plan]") {
     SECTION("sum and difference off: extent driven by A and B alone") {
-        const PlotFrame extent = ui::auto_fit_extent(PlotInputs{
+        const PlotFrame extent = auto_fit_extent_from(PlotInputs{
             .a = {3.0, 0.0}, .b = {0.0, 0.0}, .show_sum = false, .show_difference = false});
         // max magnitude 3, margin 1.05 => target 3.15, desired interval 0.7875
         // => snaps up to 1.0 (next of the 1/2/5 sequence).
@@ -339,14 +371,14 @@ TEST_CASE("auto_fit_extent only folds in magnitudes of vectors currently shown",
         // A and B are always drawn, so both always count -- this documents
         // that fact rather than an opt-out.
         const PlotFrame extent =
-            ui::auto_fit_extent(PlotInputs{.a = {1.0, 0.0}, .b = {8.0, 0.0}, .show_sum = false});
+            auto_fit_extent_from(PlotInputs{.a = {1.0, 0.0}, .b = {8.0, 0.0}, .show_sum = false});
         // max magnitude 8, target 8.4, desired interval 2.1 => snaps to 5.
         CHECK_THAT(extent.ring_interval(), WithinRel(5.0));
         CHECK_THAT(extent.extent(), WithinRel(20.0));
     }
 
     SECTION("sum shown grows the extent to cover it when it's the largest vector") {
-        const PlotFrame extent = ui::auto_fit_extent(PlotInputs{
+        const PlotFrame extent = auto_fit_extent_from(PlotInputs{
             .a = {3.0, 0.0}, .b = {3.0, 0.0}, .show_sum = true, .show_difference = false});
         // sum = (6, 0), magnitude 6, target 6.3, desired 1.575 => snaps to 2.
         CHECK_THAT(extent.ring_interval(), WithinRel(2.0));
@@ -354,7 +386,7 @@ TEST_CASE("auto_fit_extent only folds in magnitudes of vectors currently shown",
     }
 
     SECTION("sum hidden: its magnitude does not affect the extent even though it's the largest") {
-        const PlotFrame extent = ui::auto_fit_extent(PlotInputs{
+        const PlotFrame extent = auto_fit_extent_from(PlotInputs{
             .a = {3.0, 0.0}, .b = {3.0, 0.0}, .show_sum = false, .show_difference = false});
         // Ignoring the (hidden) sum's magnitude of 6, only A/B (magnitude 3)
         // count: target 3.15, desired 0.7875 => snaps to 1.
@@ -363,7 +395,7 @@ TEST_CASE("auto_fit_extent only folds in magnitudes of vectors currently shown",
     }
 
     SECTION("difference shown grows the extent to cover it when it's the largest vector") {
-        const PlotFrame extent = ui::auto_fit_extent(PlotInputs{
+        const PlotFrame extent = auto_fit_extent_from(PlotInputs{
             .a = {5.0, 0.0}, .b = {-5.0, 0.0}, .show_sum = false, .show_difference = true});
         // difference = (10, 0), magnitude 10, target 10.5, desired 2.625 => snaps to 5.
         CHECK_THAT(extent.ring_interval(), WithinRel(5.0));
@@ -371,23 +403,34 @@ TEST_CASE("auto_fit_extent only folds in magnitudes of vectors currently shown",
     }
 
     SECTION("B - A shown grows the extent to cover it when it's the largest vector") {
-        const PlotFrame extent = ui::auto_fit_extent(
+        const PlotFrame extent = auto_fit_extent_from(
             PlotInputs{.a = {5.0, 0.0}, .b = {-5.0, 0.0}, .show_difference_ba = true});
         // B - A = (-10, 0), magnitude 10, target 10.5, desired 2.625 => snaps to 5.
         CHECK_THAT(extent.ring_interval(), WithinRel(5.0));
         CHECK_THAT(extent.extent(), WithinRel(20.0));
     }
 
+    SECTION("B - A shown but toggled off after: hidden magnitude is excluded from the extent") {
+        const PlotFrame shown = auto_fit_extent_from(
+            PlotInputs{.a = {5.0, 0.0}, .b = {-5.0, 0.0}, .show_difference_ba = true});
+        const PlotFrame hidden = auto_fit_extent_from(
+            PlotInputs{.a = {5.0, 0.0}, .b = {-5.0, 0.0}, .show_difference_ba = false});
+        // Toggling B - A off drops the extent back down to A/B's own
+        // magnitude (5) instead of the much larger B - A (10).
+        CHECK_THAT(hidden.extent(), WithinRel(8.0));
+        CHECK(hidden.extent() < shown.extent());
+    }
+
     SECTION("A x B (product) shown grows the extent to cover it when it's the largest vector") {
-        const PlotFrame extent =
-            ui::auto_fit_extent(PlotInputs{.a = {3.0, 0.0}, .b = {0.0, 4.0}, .show_product = true});
+        const PlotFrame extent = auto_fit_extent_from(
+            PlotInputs{.a = {3.0, 0.0}, .b = {0.0, 4.0}, .show_product = true});
         // product magnitude = |a| * |b| = 12, target 12.6, desired 3.15 => snaps to 5.
         CHECK_THAT(extent.ring_interval(), WithinRel(5.0));
         CHECK_THAT(extent.extent(), WithinRel(20.0));
     }
 
     SECTION("A x B (product) hidden: its magnitude does not affect the extent") {
-        const PlotFrame extent = ui::auto_fit_extent(
+        const PlotFrame extent = auto_fit_extent_from(
             PlotInputs{.a = {3.0, 0.0}, .b = {0.0, 4.0}, .show_product = false});
         // Ignoring the (hidden) product's magnitude of 12, only A/B (magnitude
         // 4) count: target 4.2, desired 1.05 => snaps to 2.
@@ -396,7 +439,7 @@ TEST_CASE("auto_fit_extent only folds in magnitudes of vectors currently shown",
     }
 
     SECTION("A / B (quotient) shown grows the extent to cover it when it's the largest vector") {
-        const PlotFrame extent = ui::auto_fit_extent(
+        const PlotFrame extent = auto_fit_extent_from(
             PlotInputs{.a = {2.0, 0.0}, .b = {0.0, 0.5}, .show_quotient_ab = true});
         // quotient magnitude = |a| / |b| = 4, target 4.2, desired 1.05 => snaps to 2.
         CHECK_THAT(extent.ring_interval(), WithinRel(2.0));
@@ -404,7 +447,7 @@ TEST_CASE("auto_fit_extent only folds in magnitudes of vectors currently shown",
     }
 
     SECTION("B / A (quotient) shown grows the extent to cover it when it's the largest vector") {
-        const PlotFrame extent = ui::auto_fit_extent(
+        const PlotFrame extent = auto_fit_extent_from(
             PlotInputs{.a = {0.0, 0.5}, .b = {2.0, 0.0}, .show_quotient_ba = true});
         // quotient magnitude = |b| / |a| = 4, target 4.2, desired 1.05 => snaps to 2.
         CHECK_THAT(extent.ring_interval(), WithinRel(2.0));
@@ -412,7 +455,7 @@ TEST_CASE("auto_fit_extent only folds in magnitudes of vectors currently shown",
     }
 
     SECTION("a quotient with a zero divisor (undefined) is excluded rather than crashing") {
-        const PlotFrame extent = ui::auto_fit_extent(
+        const PlotFrame extent = auto_fit_extent_from(
             PlotInputs{.a = {3.0, 0.0}, .b = {0.0, 0.0}, .show_quotient_ab = true});
         // A / B is undefined (B is zero); falls back to A alone, magnitude 3,
         // target 3.15, desired 0.7875 => snaps to 1.
@@ -420,8 +463,22 @@ TEST_CASE("auto_fit_extent only folds in magnitudes of vectors currently shown",
         CHECK_THAT(extent.extent(), WithinRel(4.0));
     }
 
+    SECTION(
+        "a zero-magnitude divisor excludes only the corresponding quotient's magnitude, not "
+        "both") {
+        // A / B is undefined (B is zero) but B / A is well-defined; toggling
+        // both on should still fold in B / A's magnitude even though A / B
+        // contributes nothing.
+        const PlotFrame extent = auto_fit_extent_from(PlotInputs{
+            .a = {1.0, 0.0}, .b = {0.0, 0.0}, .show_quotient_ab = true, .show_quotient_ba = true});
+        // B / A = 0 / 1 = (0, 0), magnitude 0 -- doesn't grow the extent past
+        // A alone (magnitude 1): target 1.05, desired 0.2625 => snaps to 0.5.
+        CHECK_THAT(extent.ring_interval(), WithinRel(0.5));
+        CHECK_THAT(extent.extent(), WithinRel(2.0));
+    }
+
     SECTION("a tighter margin fits a vector into a smaller ring interval than a looser one would") {
-        const PlotFrame extent = ui::auto_fit_extent(PlotInputs{.a = {1.8, 0.0}, .b = {0.0, 0.0}});
+        const PlotFrame extent = auto_fit_extent_from(PlotInputs{.a = {1.8, 0.0}, .b = {0.0, 0.0}});
         // magnitude 1.8, margin 1.05 => target 1.89, desired 0.4725 => snaps
         // to 0.5 (extent 2.0, the vector reaches 90% of it). The old 1.2
         // margin would have pushed target to 2.16 (desired 0.54), crossing
@@ -435,14 +492,14 @@ TEST_CASE("auto_fit_extent only folds in magnitudes of vectors currently shown",
 
 TEST_CASE("auto_fit_extent edge cases: zero, very small, and very large vectors", "[plot_plan]") {
     SECTION("zero vectors (all inputs at the origin) fall back to a non-degenerate default") {
-        const PlotFrame extent = ui::auto_fit_extent(PlotInputs{.a = {0.0, 0.0}, .b = {0.0, 0.0}});
+        const PlotFrame extent = auto_fit_extent_from(PlotInputs{.a = {0.0, 0.0}, .b = {0.0, 0.0}});
         CHECK(extent.ring_interval() > 0.0);
         CHECK_THAT(extent.extent(), WithinRel(extent.ring_interval() * 4.0));
     }
 
     SECTION("a very small vector still snaps to a small, non-zero nice interval") {
         const PlotFrame extent =
-            ui::auto_fit_extent(PlotInputs{.a = {0.003, 0.0}, .b = {0.0, 0.0}});
+            auto_fit_extent_from(PlotInputs{.a = {0.003, 0.0}, .b = {0.0, 0.0}});
         // max magnitude 0.003, target 0.00315, desired 0.0007875 => snaps to 0.001.
         CHECK_THAT(extent.ring_interval(), WithinRel(0.001));
         CHECK_THAT(extent.extent(), WithinRel(0.004));
@@ -450,7 +507,7 @@ TEST_CASE("auto_fit_extent edge cases: zero, very small, and very large vectors"
 
     SECTION("a very large vector snaps to a large nice interval, never zero or degenerate") {
         const PlotFrame extent =
-            ui::auto_fit_extent(PlotInputs{.a = {1234.0, 0.0}, .b = {0.0, 0.0}});
+            auto_fit_extent_from(PlotInputs{.a = {1234.0, 0.0}, .b = {0.0, 0.0}});
         // max magnitude 1234, target 1295.7, desired 323.925 => snaps to 500.
         CHECK_THAT(extent.ring_interval(), WithinRel(500.0));
         CHECK_THAT(extent.extent(), WithinRel(2000.0));
@@ -461,23 +518,23 @@ TEST_CASE("auto_fit_extent's extent is always exactly ring_interval * kAutoFitRi
           "[plot_plan]") {
     for (const double magnitude : {0.0, 0.07, 1.0, 3.6, 42.0, 9999.0}) {
         const PlotFrame extent =
-            ui::auto_fit_extent(PlotInputs{.a = {magnitude, 0.0}, .b = {0.0, 0.0}});
+            auto_fit_extent_from(PlotInputs{.a = {magnitude, 0.0}, .b = {0.0, 0.0}});
         CHECK_THAT(extent.extent(), WithinRel(extent.ring_interval() * 4.0));
     }
 }
 
 TEST_CASE("auto_fit_extent: nearby magnitudes snapping to the same interval don't jitter",
           "[plot_plan]") {
-    const PlotFrame low = ui::auto_fit_extent(PlotInputs{.a = {2.5, 0.0}, .b = {0.0, 0.0}});
-    const PlotFrame high = ui::auto_fit_extent(PlotInputs{.a = {2.6, 0.0}, .b = {0.0, 0.0}});
+    const PlotFrame low = auto_fit_extent_from(PlotInputs{.a = {2.5, 0.0}, .b = {0.0, 0.0}});
+    const PlotFrame high = auto_fit_extent_from(PlotInputs{.a = {2.6, 0.0}, .b = {0.0, 0.0}});
     CHECK_THAT(low.ring_interval(), WithinRel(high.ring_interval()));
     CHECK_THAT(low.extent(), WithinRel(high.extent()));
 }
 
 TEST_CASE("plan_plot's extent field matches auto_fit_extent for the same inputs", "[plot_plan]") {
     const PlotInputs inputs{.a = kA, .b = kB, .show_sum = true, .show_difference = true};
-    const PlotPlan plan = ui::plan_plot(inputs);
-    const PlotFrame expected = ui::auto_fit_extent(inputs);
+    const PlotPlan plan = plan_plot_from(inputs);
+    const PlotFrame expected = auto_fit_extent_from(inputs);
 
     CHECK_THAT(plan.extent.ring_interval(), WithinRel(expected.ring_interval()));
     CHECK_THAT(plan.extent.extent(), WithinRel(expected.extent()));
@@ -490,7 +547,7 @@ TEST_CASE("manual scale override: manual interval replaces the auto-fit calculat
     // different manual interval demonstrates it's not being used.
     const PlotInputs inputs{.a = kA, .b = kB, .auto_scale = false, .manual_ring_interval = 7.5};
 
-    const PlotPlan plan = ui::plan_plot(inputs);
+    const PlotPlan plan = plan_plot_from(inputs);
 
     CHECK_THAT(plan.extent.ring_interval(), WithinRel(7.5));
 }
@@ -500,7 +557,7 @@ TEST_CASE("manual scale override: extent == interval * kAutoFitRings still holds
     for (const double interval : {0.1, 1.0, 3.0, 42.0, 100.0}) {
         const PlotInputs inputs{
             .a = kA, .b = kB, .auto_scale = false, .manual_ring_interval = interval};
-        const PlotPlan plan = ui::plan_plot(inputs);
+        const PlotPlan plan = plan_plot_from(inputs);
         CHECK_THAT(plan.extent.ring_interval(), WithinRel(interval));
         CHECK_THAT(plan.extent.extent(), WithinRel(interval * ui::kAutoFitRings));
     }
@@ -511,30 +568,30 @@ TEST_CASE(
     "auto-fits",
     "[plot_plan]") {
     const PlotInputs inputs{.a = kA, .b = kB, .manual_ring_interval = 999.0};
-    const PlotPlan plan = ui::plan_plot(inputs);
-    const PlotFrame expected = ui::auto_fit_extent(inputs);
+    const PlotPlan plan = plan_plot_from(inputs);
+    const PlotFrame expected = auto_fit_extent_from(inputs);
     CHECK_THAT(plan.extent.ring_interval(), WithinRel(expected.ring_interval()));
 }
 
 TEST_CASE("derived_vectors: order contract across representative toggle combinations",
           "[plot_plan]") {
     SECTION("none shown: derived_vectors is empty") {
-        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA, .b = kB});
+        const PlotPlan plan = plan_plot_from(PlotInputs{.a = kA, .b = kB});
         CHECK(plan.derived_vectors.empty());
     }
 
     SECTION(
         "all six shown: fixed order difference, sum, difference_ba, product, quotient_ab, "
-        "quotient_ba -- matching App::draw_plot's draw order, not plan_plot's computation "
-        "order") {
-        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA,
-                                                       .b = kB,
-                                                       .show_sum = true,
-                                                       .show_difference = true,
-                                                       .show_difference_ba = true,
-                                                       .show_product = true,
-                                                       .show_quotient_ab = true,
-                                                       .show_quotient_ba = true});
+        "quotient_ba -- matching App::draw_plot's draw order, not kNamedVectorSpecs' internal "
+        "layout by itself") {
+        const PlotPlan plan = plan_plot_from(PlotInputs{.a = kA,
+                                                        .b = kB,
+                                                        .show_sum = true,
+                                                        .show_difference = true,
+                                                        .show_difference_ba = true,
+                                                        .show_product = true,
+                                                        .show_quotient_ab = true,
+                                                        .show_quotient_ba = true});
 
         const Vec2 sum = kA + kB;
         const Vec2 diff = kA - kB;
@@ -560,7 +617,7 @@ TEST_CASE("derived_vectors: order contract across representative toggle combinat
 
     SECTION("only show_difference_ba on: single entry, B - A") {
         const PlotPlan plan =
-            ui::plan_plot(PlotInputs{.a = kA, .b = kB, .show_difference_ba = true});
+            plan_plot_from(PlotInputs{.a = kA, .b = kB, .show_difference_ba = true});
         const Vec2 expected = kB - kA;
         REQUIRE(plan.derived_vectors.size() == 1);
         CHECK(std::string(plan.derived_vectors[0].label) == "B - A");
@@ -568,7 +625,7 @@ TEST_CASE("derived_vectors: order contract across representative toggle combinat
     }
 
     SECTION("only show_product on: single entry, A x B") {
-        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA, .b = kB, .show_product = true});
+        const PlotPlan plan = plan_plot_from(PlotInputs{.a = kA, .b = kB, .show_product = true});
         const Vec2 expected = vecmath::complex_multiply(kA, kB);
         REQUIRE(plan.derived_vectors.size() == 1);
         CHECK(std::string(plan.derived_vectors[0].label) == "A x B");
@@ -576,7 +633,8 @@ TEST_CASE("derived_vectors: order contract across representative toggle combinat
     }
 
     SECTION("only show_quotient_ab on: single entry, A / B") {
-        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA, .b = kB, .show_quotient_ab = true});
+        const PlotPlan plan =
+            plan_plot_from(PlotInputs{.a = kA, .b = kB, .show_quotient_ab = true});
         const Vec2 expected = require_value(vecmath::complex_divide(kA, kB));
         REQUIRE(plan.derived_vectors.size() == 1);
         CHECK(std::string(plan.derived_vectors[0].label) == "A / B");
@@ -584,7 +642,8 @@ TEST_CASE("derived_vectors: order contract across representative toggle combinat
     }
 
     SECTION("only show_quotient_ba on: single entry, B / A") {
-        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA, .b = kB, .show_quotient_ba = true});
+        const PlotPlan plan =
+            plan_plot_from(PlotInputs{.a = kA, .b = kB, .show_quotient_ba = true});
         const Vec2 expected = require_value(vecmath::complex_divide(kB, kA));
         REQUIRE(plan.derived_vectors.size() == 1);
         CHECK(std::string(plan.derived_vectors[0].label) == "B / A");
@@ -593,12 +652,23 @@ TEST_CASE("derived_vectors: order contract across representative toggle combinat
 
     SECTION("show_quotient_ab on but B is zero: quotient stays absent from derived_vectors too") {
         const PlotPlan plan =
-            ui::plan_plot(PlotInputs{.a = kA, .b = Vec2{0.0, 0.0}, .show_quotient_ab = true});
+            plan_plot_from(PlotInputs{.a = kA, .b = Vec2{0.0, 0.0}, .show_quotient_ab = true});
         CHECK(plan.derived_vectors.empty());
     }
 
+    SECTION(
+        "show_quotient_ab and show_quotient_ba both on but B is zero: only the well-defined "
+        "quotient (B / A) is included") {
+        const PlotPlan plan = plan_plot_from(PlotInputs{
+            .a = kA, .b = Vec2{0.0, 0.0}, .show_quotient_ab = true, .show_quotient_ba = true});
+        const Vec2 expected = require_value(vecmath::complex_divide(Vec2{0.0, 0.0}, kA));
+        REQUIRE(plan.derived_vectors.size() == 1);
+        CHECK(std::string(plan.derived_vectors[0].label) == "B / A");
+        CHECK(points_equal(plan.derived_vectors[0].point, {expected.x, expected.y}));
+    }
+
     SECTION("only show_sum on: single entry, A + B") {
-        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA, .b = kB, .show_sum = true});
+        const PlotPlan plan = plan_plot_from(PlotInputs{.a = kA, .b = kB, .show_sum = true});
         const Vec2 expected = kA + kB;
         REQUIRE(plan.derived_vectors.size() == 1);
         CHECK(std::string(plan.derived_vectors[0].label) == "A + B");
@@ -606,11 +676,23 @@ TEST_CASE("derived_vectors: order contract across representative toggle combinat
     }
 
     SECTION("only show_difference on: single entry, A - B") {
-        const PlotPlan plan = ui::plan_plot(PlotInputs{.a = kA, .b = kB, .show_difference = true});
+        const PlotPlan plan = plan_plot_from(PlotInputs{.a = kA, .b = kB, .show_difference = true});
         const Vec2 expected = kA - kB;
         REQUIRE(plan.derived_vectors.size() == 1);
         CHECK(std::string(plan.derived_vectors[0].label) == "A - B");
         CHECK(points_equal(plan.derived_vectors[0].point, {expected.x, expected.y}));
+    }
+
+    SECTION("toggling a derived vector off excludes it from derived_vectors even among others") {
+        const PlotPlan all_on = plan_plot_from(PlotInputs{
+            .a = kA, .b = kB, .show_sum = true, .show_difference_ba = true, .show_product = true});
+        REQUIRE(all_on.derived_vectors.size() == 3);
+
+        const PlotPlan sum_off = plan_plot_from(PlotInputs{
+            .a = kA, .b = kB, .show_sum = false, .show_difference_ba = true, .show_product = true});
+        REQUIRE(sum_off.derived_vectors.size() == 2);
+        CHECK(std::string(sum_off.derived_vectors[0].label) == "B - A");
+        CHECK(std::string(sum_off.derived_vectors[1].label) == "A x B");
     }
 }
 
@@ -621,24 +703,24 @@ TEST_CASE("rotation indicator: plan_plot derives a plain sweep sign from rotatio
     // docs/adr/0001-polar-plotting-receives-only-composed-angle-sign.md) --
     // comparing it against a double literal below exercises that.
     SECTION("counterclockwise composes to a positive sweep sign") {
-        const PlotPlan plan = ui::plan_plot(PlotInputs{
+        const PlotPlan plan = plan_plot_from(PlotInputs{
             .a = kA, .b = kB, .rotation_direction = ui::RotationDirection::CounterClockwise});
         CHECK(plan.rotation_indicator_sweep_sign == 1.0);
     }
 
     SECTION("clockwise composes to a negative sweep sign") {
-        const PlotPlan plan = ui::plan_plot(
+        const PlotPlan plan = plan_plot_from(
             PlotInputs{.a = kA, .b = kB, .rotation_direction = ui::RotationDirection::Clockwise});
         CHECK(plan.rotation_indicator_sweep_sign == -1.0);
     }
 
     SECTION("measurement_convention does not affect the sweep sign (unlike angle_sign)") {
-        const PlotPlan with_rotation = ui::plan_plot(
+        const PlotPlan with_rotation = plan_plot_from(
             PlotInputs{.a = kA,
                        .b = kB,
                        .rotation_direction = ui::RotationDirection::CounterClockwise,
                        .measurement_convention = ui::MeasurementConvention::WithRotation});
-        const PlotPlan against_rotation = ui::plan_plot(
+        const PlotPlan against_rotation = plan_plot_from(
             PlotInputs{.a = kA,
                        .b = kB,
                        .rotation_direction = ui::RotationDirection::CounterClockwise,

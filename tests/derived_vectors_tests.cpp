@@ -14,6 +14,9 @@ TEST_CASE("compute_derived_vectors computes the additive derived vectors",
 
     const DerivedVectors derived = compute_derived_vectors(a, b);
 
+    REQUIRE(derived.sum.has_value());
+    REQUIRE(derived.difference_ab.has_value());
+    REQUIRE(derived.difference_ba.has_value());
     CHECK(derived.sum == a + b);
     CHECK(derived.difference_ab == a - b);
     CHECK(derived.difference_ba == b - a);
@@ -25,6 +28,7 @@ TEST_CASE("compute_derived_vectors computes the complex product", "[ui][derived_
 
     const DerivedVectors derived = compute_derived_vectors(a, b);
 
+    REQUIRE(derived.product.has_value());
     CHECK(derived.product == vecmath::complex_multiply(a, b));
 }
 
@@ -56,4 +60,20 @@ TEST_CASE("compute_derived_vectors leaves a quotient undefined for a zero-magnit
         CHECK_FALSE(derived.quotient_ba.has_value());
         REQUIRE(derived.quotient_ab.has_value());
     }
+}
+
+TEST_CASE(
+    "compute_derived_vectors always engages sum/difference_ab/difference_ba/product, even when "
+    "both quotients are undefined",
+    "[ui][derived_vectors]") {
+    constexpr Vec2 zero{0.0, 0.0};
+
+    const DerivedVectors derived = compute_derived_vectors(zero, zero);
+
+    CHECK(derived.sum.has_value());
+    CHECK(derived.difference_ab.has_value());
+    CHECK(derived.difference_ba.has_value());
+    CHECK(derived.product.has_value());
+    CHECK_FALSE(derived.quotient_ab.has_value());
+    CHECK_FALSE(derived.quotient_ba.has_value());
 }

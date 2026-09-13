@@ -111,6 +111,16 @@ private:
     // jump, once the drag ends.
     polarplot::PlotFrame drag_frozen_extent_{1.0, kAutoFitRings};
 
+    // This frame's 6 derived named vectors, computed once in draw_controls()
+    // (see its call to compute_derived_vectors) and consumed both there (the
+    // results table, quotient-checkbox enabled state) and by the next call to
+    // draw_plot() (via PlotInputs::derived) -- see draw_controls' doc comment
+    // for why using a one-frame-old value here is still exactly correct.
+    // Initialized from a_/b_'s (possibly config-loaded) starting values in
+    // both constructors so the very first frame -- drawn before
+    // draw_controls() has run -- is already consistent.
+    DerivedVectors derived_;
+
     // Currently-selected built-in visual theme (see ui/theme.hpp), applied to
     // ImGui::GetStyle() once on construction and again whenever the Theme
     // menu changes it (see draw_menu_bar) -- never reapplied every frame.
@@ -134,6 +144,16 @@ private:
     // selection checked) menus, drawn via ImGui::BeginMenuBar() inside the
     // dockspace host window's Begin/End -- must be called between them.
     void draw_menu_bar();
+    // Also recomputes derived_ from this frame's (possibly just-edited) a_/b_
+    // -- the single call site for compute_derived_vectors -- for use by this
+    // same function's results table/quotient-checkbox gating and by the next
+    // call to draw_plot(), which is called before draw_controls() each frame
+    // (see render()'s comment) so it necessarily reads a one-frame-old
+    // derived_. That's still exactly right: derived_ is always recomputed
+    // from whatever a_/b_ draw_plot() itself will read at the top of its next
+    // call (nothing else changes a_/b_ in between), so the pairing stays
+    // consistent and the formulas (unchanged) produce identical results
+    // either way.
     void draw_controls();
     // Non-const: click-dragging a vector's tip (see #44/#48) writes the
     // updated position (and discards any in-progress Amplitude/Phase text

@@ -15,6 +15,7 @@
 
 #include "polar_plotting/polar_plot.hpp"
 #include "ui/angle_convention.hpp"
+#include "ui/derived_vectors.hpp"
 #include "vector_math/vec2.hpp"
 
 namespace ui {
@@ -25,6 +26,15 @@ namespace ui {
 struct PlotInputs {
     vecmath::Vec2 a;
     vecmath::Vec2 b;
+    // The 6 derived named vectors computed from a and b, computed exactly
+    // once per frame by the caller (App::draw_controls) via
+    // compute_derived_vectors(a, b) -- plan_plot and auto_fit_extent read
+    // values from here instead of each independently recomputing the same
+    // formulas. Defaulted (all fields nullopt) purely so aggregate-init call
+    // sites that don't touch sum/difference/product/quotient toggles aren't
+    // forced to spell it out; any caller enabling those toggles must supply a
+    // real value here.
+    DerivedVectors derived{};
     bool show_sum{false};
     bool show_difference{false};
     bool show_tip_to_tail{false};

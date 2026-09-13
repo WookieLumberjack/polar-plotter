@@ -638,21 +638,12 @@ void draw_rotation_indicator(PlotFrame frame, double sweep_sign, ArcStyle style 
 struct PlotPlan {
     Point a;
     Point b;
-    std::optional<Point> sum;
-    std::optional<Point> difference;
-    // Plain-arrow derived vectors, present iff their show_* toggle is on --
-    // for the quotients, also iff the divisor's magnitude is nonzero (see
-    // vecmath::complex_divide).
-    std::optional<Point> difference_ba;
-    std::optional<Point> product;
-    std::optional<Point> quotient_ab;
-    std::optional<Point> quotient_ba;
 
-    /// One entry per non-interactive derived vector currently shown -- a
-    /// list-shaped view over the same values already computed for
-    /// difference/sum/difference_ba/product/quotient_ab/quotient_ba above (no
-    /// new computation). A and B are excluded: they go through
-    /// draw_interactive_vector, a structurally different draw path.
+    /// One entry per non-interactive derived vector currently shown -- present
+    /// iff its show_* toggle is on and, for the quotients, iff the divisor's
+    /// magnitude is nonzero (see vecmath::complex_divide). A and B are
+    /// excluded: they go through draw_interactive_vector, a structurally
+    /// different draw path.
     struct DerivedVector {
         const char* label{nullptr};
         Point point;
