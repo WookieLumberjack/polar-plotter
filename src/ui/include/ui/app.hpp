@@ -9,6 +9,7 @@
 #include "ui/derived_vectors.hpp"
 #include "ui/plot_plan.hpp"
 #include "ui/polar_display.hpp"
+#include "ui/theme.hpp"
 
 namespace ui {
 
@@ -34,6 +35,12 @@ public:
 
     /// Persist current inputs to the config path (no-op if none was given).
     void save() const;
+
+    /// True once the File > Exit menu item has been selected. ui:: must not
+    /// depend on GLFW/windowing (see CLAUDE.md's module table), so App can't
+    /// call glfwSetWindowShouldClose itself -- the host (app/main.cpp) polls
+    /// this after render() and closes the window when it's true.
+    [[nodiscard]] bool want_exit() const { return want_exit_; }
 
 private:
     struct VectorInput {
@@ -104,11 +111,29 @@ private:
     // jump, once the drag ends.
     polarplot::PlotFrame drag_frozen_extent_{1.0, kAutoFitRings};
 
+    // Currently-selected built-in visual theme (see ui/theme.hpp), applied to
+    // ImGui::GetStyle() once on construction and again whenever the Theme
+    // menu changes it (see draw_menu_bar) -- never reapplied every frame.
+    Theme theme_{Theme::kSlate};
+    // See want_exit().
+    bool want_exit_{false};
+
+    // Applies theme_'s style to ImGui::GetStyle(). Called once from both
+    // constructors and again from draw_menu_bar whenever the selection
+    // changes.
+    void apply_current_theme() const;
+
     // Full-viewport invisible host window + ImGui::DockSpace(); builds the
     // first-run default layout (Polar plot right 2/3, Vectors left 1/3) via
     // DockBuilder the first time the dockspace node doesn't exist yet, then
-    // leaves layout entirely to the user (persisted via imgui.ini).
-    static void draw_dockspace_host();
+    // leaves layout entirely to the user (persisted via imgui.ini). Also
+    // draws the File/Theme menu bar (see draw_menu_bar) inside this same
+    // host window, which reserves ImGuiWindowFlags_MenuBar for it.
+    void draw_dockspace_host();
+    // File (Exit) and Theme (one selectable per Theme enum value, current
+    // selection checked) menus, drawn via ImGui::BeginMenuBar() inside the
+    // dockspace host window's Begin/End -- must be called between them.
+    void draw_menu_bar();
     void draw_controls();
     // Non-const: click-dragging a vector's tip (see #44/#48) writes the
     // updated position (and discards any in-progress Amplitude/Phase text

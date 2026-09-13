@@ -5,6 +5,8 @@
 #include <filesystem>
 #include <optional>
 
+#include "ui/theme.hpp"
+
 namespace ui {
 
 /// The handful of values worth remembering between runs. Serialised as a flat
@@ -31,6 +33,10 @@ struct Config {
     bool auto_scale{true};
     // Ring interval used verbatim when auto_scale is false.
     float manual_ring_interval{1.0F};
+    // Selected built-in visual theme (see ui/theme.hpp). Serialized as its
+    // enum name (e.g. "slate"); an unrecognized/missing value falls back to
+    // the default, same rule as every other field here.
+    Theme theme{Theme::kSlate};
 
     friend bool operator==(const Config&, const Config&) = default;
 };
