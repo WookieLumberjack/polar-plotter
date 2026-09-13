@@ -358,11 +358,17 @@ std::vector<SpokeLabel> spoke_labels(double max_radius, AngleConvention conventi
 }
 
 void draw_arrow(const char* label, Point tail, Point head, AngleConvention convention,
-                float thickness) {
+                float thickness, const MarkerColor* line_color) {
     const Point ptail = to_plotted_point(tail, convention);
     const Point phead = to_plotted_point(head, convention);
     const std::string head_id = std::string("##head_") + label;
-    plot_arrow_shape(label, head_id, ptail, phead, /*line_color=*/nullptr, thickness);
+
+    if (line_color == nullptr) {
+        plot_arrow_shape(label, head_id, ptail, phead, /*line_color=*/nullptr, thickness);
+        return;
+    }
+    const ImVec4 resolved_line_color{line_color->r, line_color->g, line_color->b, line_color->a};
+    plot_arrow_shape(label, head_id, ptail, phead, &resolved_line_color, thickness);
 }
 
 namespace {
@@ -401,14 +407,15 @@ void draw_tip_label(const char* label, Point tip, const MarkerColor* marker_colo
 }  // namespace
 
 void draw_vector(const char* label, Point head, AngleConvention convention,
-                 TipMarkerStyle marker_style, float thickness, const MarkerColor* marker_color) {
+                 TipMarkerStyle marker_style, float thickness, const MarkerColor* marker_color,
+                 const MarkerColor* line_color) {
     // Draw the tip marker before the arrow shaft/head so it sits behind the
     // arrowhead and peeks out past the tip, instead of being fully covered
     // when the marker is larger than the arrowhead.
     const Point tip = to_plotted_point(head, convention);
     draw_tip_marker(label, tip, marker_style, marker_color);
 
-    draw_arrow(label, Point{0.0, 0.0}, head, convention, thickness);
+    draw_arrow(label, Point{0.0, 0.0}, head, convention, thickness, line_color);
 
     draw_tip_label(label, tip, marker_color);
 }
@@ -512,12 +519,10 @@ Point clamp_to_rect(Point p, PixelRect rect) {
     return {std::clamp(p.x, rect.min.x, rect.max.x), std::clamp(p.y, rect.min.y, rect.max.y)};
 }
 
-InteractiveVectorResult draw_interactive_vector(const char* label, Point head,
-                                                AngleConvention convention,
-                                                TipMarkerStyle marker_style, bool is_hover_target,
-                                                bool was_dragging, float thickness, bool auto_scale,
-                                                double visible_extent,
-                                                const MarkerColor* default_marker_color) {
+InteractiveVectorResult draw_interactive_vector(
+    const char* label, Point head, AngleConvention convention, TipMarkerStyle marker_style,
+    bool is_hover_target, bool was_dragging, float thickness, bool auto_scale,
+    double visible_extent, const MarkerColor* default_marker_color, const MarkerColor* line_color) {
     constexpr ImGuiMouseButton kDragButton = ImGuiMouseButton_Left;
     const bool mouse_down = ImGui::IsMouseDown(kDragButton);
     const bool mouse_pressed = ImGui::IsMouseClicked(kDragButton);
@@ -571,7 +576,7 @@ InteractiveVectorResult draw_interactive_vector(const char* label, Point head,
         marker_color = &kHoverMarkerColor;
     }
 
-    draw_vector(label, updated_head, convention, marker_style, thickness, marker_color);
+    draw_vector(label, updated_head, convention, marker_style, thickness, marker_color, line_color);
 
     return {updated_head, state};
 }

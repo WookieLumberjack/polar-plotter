@@ -264,26 +264,33 @@ inline constexpr float kHeadLengthPixels = 14.0F;
 /// dividing by zero. Pure function -- the test seam for this conversion.
 [[nodiscard]] double head_frac_for_fixed_pixels(double head_length_px, double shaft_length_px);
 
-/// Draw an arrow (shaft + head) from \p tail to \p head, labelled \p label.
-/// \p tail and \p head are given in math convention and remapped via
-/// \p convention before drawing. The arrowhead is always \ref
-/// kHeadLengthPixels on screen (see \ref head_frac_for_fixed_pixels) --
-/// there is no per-call head-size override. \p thickness is the shaft/head
-/// line weight in pixels, applied to both. This is the bare drawing
-/// primitive -- it carries no tip marker or tip label; use \ref draw_vector
-/// for a named vector, which always gets both.
-void draw_arrow(const char* label, Point tail, Point head, AngleConvention convention,
-                float thickness = 2.0F);
-
 /// RGBA color override for a named vector's tip marker (components in
 /// [0, 1]). Kept as a plain struct -- rather than an ImGui/ImPlot type -- so
 /// this header doesn't need to include their headers, matching \ref ArcStyle.
+/// Also reused (see \ref draw_arrow / \ref draw_vector's \p line_color
+/// parameter) as the shaft/arrowhead color override.
 struct MarkerColor {
     float r{0.0F};
     float g{0.0F};
     float b{0.0F};
     float a{1.0F};
 };
+
+/// Draw an arrow (shaft + head) from \p tail to \p head, labelled \p label.
+/// \p tail and \p head are given in math convention and remapped via
+/// \p convention before drawing. The arrowhead is always \ref
+/// kHeadLengthPixels on screen (see \ref head_frac_for_fixed_pixels) --
+/// there is no per-call head-size override. \p thickness is the shaft/head
+/// line weight in pixels, applied to both. \p line_color, when non-null,
+/// overrides both the shaft's and the arrowhead's color in place of ImPlot's
+/// auto-cycled per-item color (see #70: the auto-cycle reassigns colors once
+/// a toggled-off item's legend entry is garbage-collected and later
+/// recreated); left null by every existing caller, so the default appearance
+/// (today's auto-cycle behavior) is unchanged. This is the bare drawing
+/// primitive -- it carries no tip marker or tip label; use \ref draw_vector
+/// for a named vector, which always gets both.
+void draw_arrow(const char* label, Point tail, Point head, AngleConvention convention,
+                float thickness = 2.0F, const MarkerColor* line_color = nullptr);
 
 /// The fixed, shared marker color used for a hovered tip (see #44/#47):
 /// applies identically to A or B, never per-vector-tinted, and is distinct
@@ -322,10 +329,15 @@ void draw_length_tick(double magnitude, MarkerColor color);
 /// has no hardcoded default). When null, the marker keeps ImPlot's normal
 /// auto-cycled color and the label matches whatever color the shaft/head
 /// resolved to. The shaft/arrowhead's own color is never affected by this
-/// override.
+/// override. \p line_color, when non-null, is forwarded to \ref draw_arrow
+/// and overrides the shaft's and arrowhead's color instead (sibling to
+/// \p marker_color, but applied to the opposite part of the drawing -- see
+/// #70's fixed per-vector palette); null by default, preserving today's
+/// ImPlot auto-cycle behavior for the shaft and head.
 void draw_vector(const char* label, Point head, AngleConvention convention,
                  TipMarkerStyle marker_style, float thickness = 2.0F,
-                 const MarkerColor* marker_color = nullptr);
+                 const MarkerColor* marker_color = nullptr,
+                 const MarkerColor* line_color = nullptr);
 
 /// Which of A's or B's tip (if either) is the target of a hover/drag
 /// interaction this frame; \c kNone when neither is within hit range of the
@@ -467,10 +479,22 @@ struct InteractiveVectorResult {
 /// \ref from_plotted_point, so it aligns with the grid as drawn regardless
 /// of \p convention. Magnitude/radius is never snapped. Releasing Shift
 /// mid-drag takes effect the very next frame.
+///
+/// \p default_marker_color, when non-null, is forwarded to the underlying
+/// \ref draw_vector call as its own \p marker_color override for any state
+/// other than hover/drag (idle, or released off-target) -- see #68, where
+/// \c ui::App::draw_plot passes the active theme's text color as this
+/// default. \p line_color, when non-null, is forwarded to the underlying
+/// \ref draw_vector call as its own \p line_color override, fixing A/B's
+/// shaft/arrowhead color independent of ImPlot's auto-cycle (see #70); null
+/// by default, preserving today's auto-cycle behavior. Neither parameter
+/// overrides the tip marker's hover/drag recoloring, which is applied
+/// separately per the resolved \ref InteractionState.
 [[nodiscard]] InteractiveVectorResult draw_interactive_vector(
     const char* label, Point head, AngleConvention convention, TipMarkerStyle marker_style,
     bool is_hover_target, bool was_dragging, float thickness = 2.0F, bool auto_scale = true,
-    double visible_extent = 0.0, const MarkerColor* default_marker_color = nullptr);
+    double visible_extent = 0.0, const MarkerColor* default_marker_color = nullptr,
+    const MarkerColor* line_color = nullptr);
 
 /// A free-vector annotation: an arrow beginning at an explicit \p start point
 /// (never assumed to originate at the origin) and displaced by \p vector.
