@@ -68,6 +68,19 @@ the name, e.g. `A` — not its magnitude/angle, which already lives in the
 side panel). General mechanism for every named vector, not a special case
 for zero or near-zero results.
 
+**Length tick**:
+A short horizontal mark `polar_plotting` draws on the vertical scale ruler
+(the Y2 axis; see `ruler_ticks`) at a vector's magnitude, colored to match
+that vector's plotted color. One per currently-shown vector (A, B, any
+toggled derived vector), drawn immediately after the vector itself so its
+color can be read off `ImPlot::GetLastItemColor()` — the same trick
+`plot_arrow_shape` uses to keep a vector's own shaft and arrowhead in sync —
+rather than assigned independently. Always the vector's magnitude
+(`hypot(x, y)`), never its plotted y-coordinate, so it's fully decoupled
+from angle: two vectors of equal length but different angle tick at the
+same height. A vector whose magnitude exceeds the ruler's current visible
+extent gets no tick at all, rather than one out of bounds.
+
 **Annotation**:
 Something `ui` passes to `polar_plotting` purely to be drawn — `polar_plotting`
 has no concept of what it represents (a construction line, a sum, a

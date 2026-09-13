@@ -64,6 +64,26 @@ void draw_drag_tooltip(const char* label, polarplot::Point head) {
     ImGui::EndTooltip();
 }
 
+// Convert an ImPlot-resolved color (from ImPlot::GetLastItemColor()) to a
+// polarplot::MarkerColor, for handing a vector's just-drawn on-plot color
+// straight into polarplot::draw_length_tick (see #62) -- so a length tick's
+// color is always read off the vector's actual drawn color, never
+// independently assigned.
+polarplot::MarkerColor to_marker_color(const ImVec4& color) {
+    return {color.x, color.y, color.z, color.w};
+}
+
+// Draw a length tick for a just-drawn vector: magnitude is always
+// std::hypot(x, y) of \p head's math-convention components -- never its
+// plotted y-coordinate -- and color is read off whatever item ImPlot last
+// drew (that vector's own shaft/arrowhead), reusing draw_vector's own
+// shaft/head color-sync trick (see polar_plot.cpp's plot_arrow_shape) so tick
+// color is guaranteed to match rather than independently assigned.
+void draw_length_tick_for(polarplot::Point head) {
+    const double magnitude = std::hypot(head.x, head.y);
+    polarplot::draw_length_tick(magnitude, to_marker_color(ImPlot::GetLastItemColor()));
+}
+
 }  // namespace
 
 void App::draw_vector_input(const char* label_prefix, VectorInput& input) {
@@ -458,9 +478,11 @@ void App::draw_plot() {
     const polarplot::InteractiveVectorResult a_result = polarplot::draw_interactive_vector(
         "A", plan.a, plan.convention, marker_style_, hovered == polarplot::HoverTarget::kA,
         a_.dragging_, /*head_frac=*/0.12, line_width_, auto_scale_, extent);
+    draw_length_tick_for(a_result.head);
     const polarplot::InteractiveVectorResult b_result = polarplot::draw_interactive_vector(
         "B", plan.b, plan.convention, marker_style_, hovered == polarplot::HoverTarget::kB,
         b_.dragging_, /*head_frac=*/0.12, line_width_, auto_scale_, extent);
+    draw_length_tick_for(b_result.head);
     // Live drag tooltip (#44/#51): only while actively dragging, not during a
     // plain pre-drag hover -- disappears the instant the drag ends, since a
     // kReleased/kIdle/kHovered frame no longer matches kDragging here.
@@ -475,26 +497,32 @@ void App::draw_plot() {
     if (plan.difference) {
         polarplot::draw_vector("A - B", *plan.difference, plan.convention, marker_style_,
                                /*head_frac=*/0.12, line_width_);
+        draw_length_tick_for(*plan.difference);
     }
     if (plan.sum) {
         polarplot::draw_vector("A + B", *plan.sum, plan.convention, marker_style_,
                                /*head_frac=*/0.12, line_width_);
+        draw_length_tick_for(*plan.sum);
     }
     if (plan.difference_ba) {
         polarplot::draw_vector("B - A", *plan.difference_ba, plan.convention, marker_style_,
                                /*head_frac=*/0.12, line_width_);
+        draw_length_tick_for(*plan.difference_ba);
     }
     if (plan.product) {
         polarplot::draw_vector("A x B", *plan.product, plan.convention, marker_style_,
                                /*head_frac=*/0.12, line_width_);
+        draw_length_tick_for(*plan.product);
     }
     if (plan.quotient_ab) {
         polarplot::draw_vector("A / B", *plan.quotient_ab, plan.convention, marker_style_,
                                /*head_frac=*/0.12, line_width_);
+        draw_length_tick_for(*plan.quotient_ab);
     }
     if (plan.quotient_ba) {
         polarplot::draw_vector("B / A", *plan.quotient_ba, plan.convention, marker_style_,
                                /*head_frac=*/0.12, line_width_);
+        draw_length_tick_for(*plan.quotient_ba);
     }
     // Positional ids: fine because draw_annotation_vector's id is never shown
     // (see polar_plot.hpp), only needs to be unique per frame, and
