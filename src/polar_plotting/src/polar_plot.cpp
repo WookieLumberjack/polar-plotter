@@ -45,9 +45,11 @@ ImPlotSpec arrow_line_spec(const ImVec4* line_color, float thickness) {
 // \p head (already in plotted/drawing coordinates -- callers remap via
 // \ref to_plotted_point first), styled with \p line_color (nullptr for
 // ImPlot's default color cycling) and \p thickness (line weight in pixels,
-// shared by shaft and head).
+// shared by shaft and head). The head is always kHeadLengthPixels long on
+// screen (see head_frac_for_fixed_pixels), independent of the shaft's
+// data-space length or the plot's current zoom.
 void plot_arrow_shape(const std::string& shaft_id, const std::string& head_id, Point tail,
-                      Point head, double head_frac, const ImVec4* line_color, float thickness) {
+                      Point head, const ImVec4* line_color, float thickness) {
     const std::array<double, 2> sx{tail.x, head.x};
     const std::array<double, 2> sy{tail.y, head.y};
     ImPlot::PlotLine(shaft_id.c_str(), sx.data(), sy.data(), 2,
@@ -63,6 +65,13 @@ void plot_arrow_shape(const std::string& shaft_id, const std::string& head_id, P
     if (head.x == tail.x && head.y == tail.y) {
         return;
     }
+
+    const ImVec2 pixel_tail = ImPlot::PlotToPixels(tail.x, tail.y);
+    const ImVec2 pixel_head = ImPlot::PlotToPixels(head.x, head.y);
+    const double shaft_length_px = std::hypot(static_cast<double>(pixel_head.x - pixel_tail.x),
+                                              static_cast<double>(pixel_head.y - pixel_tail.y));
+    const double head_frac =
+        head_frac_for_fixed_pixels(static_cast<double>(kHeadLengthPixels), shaft_length_px);
 
     const ArrowheadWings wings = arrowhead_wing_points(tail, head, head_frac);
     const std::array<double, 3> hx{wings.first.x, head.x, wings.second.x};
@@ -94,6 +103,14 @@ ArrowheadWings arrowhead_wing_points(Point tail, Point head, double head_frac) {
     const double wing_y = kWing * h * ux;
 
     return {Point{back_x + wing_x, back_y - wing_y}, Point{back_x - wing_x, back_y + wing_y}};
+}
+
+double head_frac_for_fixed_pixels(double head_length_px, double shaft_length_px) {
+    constexpr double kMaxHeadFrac = 0.9;
+    if (shaft_length_px <= 0.0) {
+        return 0.0;
+    }
+    return std::clamp(head_length_px / shaft_length_px, 0.0, kMaxHeadFrac);
 }
 
 double inflate_for_labels(PlotFrame frame) { return frame.extent() * kLabelPaddingFactor; }
@@ -335,11 +352,11 @@ std::vector<SpokeLabel> spoke_labels(double max_radius, AngleConvention conventi
 }
 
 void draw_arrow(const char* label, Point tail, Point head, AngleConvention convention,
-                double head_frac, float thickness) {
+                float thickness) {
     const Point ptail = to_plotted_point(tail, convention);
     const Point phead = to_plotted_point(head, convention);
     const std::string head_id = std::string("##head_") + label;
-    plot_arrow_shape(label, head_id, ptail, phead, head_frac, /*line_color=*/nullptr, thickness);
+    plot_arrow_shape(label, head_id, ptail, phead, /*line_color=*/nullptr, thickness);
 }
 
 namespace {
@@ -371,15 +388,14 @@ void draw_tip_label(const char* label, Point tip) {
 }  // namespace
 
 void draw_vector(const char* label, Point head, AngleConvention convention,
-                 TipMarkerStyle marker_style, double head_frac, float thickness,
-                 const MarkerColor* marker_color) {
+                 TipMarkerStyle marker_style, float thickness, const MarkerColor* marker_color) {
     // Draw the tip marker before the arrow shaft/head so it sits behind the
     // arrowhead and peeks out past the tip, instead of being fully covered
     // when the marker is larger than the arrowhead.
     const Point tip = to_plotted_point(head, convention);
     draw_tip_marker(label, tip, marker_style, marker_color);
 
-    draw_arrow(label, Point{0.0, 0.0}, head, convention, head_frac, thickness);
+    draw_arrow(label, Point{0.0, 0.0}, head, convention, thickness);
 
     draw_tip_label(label, tip);
 }
@@ -486,8 +502,7 @@ Point clamp_to_rect(Point p, PixelRect rect) {
 InteractiveVectorResult draw_interactive_vector(const char* label, Point head,
                                                 AngleConvention convention,
                                                 TipMarkerStyle marker_style, bool is_hover_target,
-                                                bool was_dragging, double head_frac,
-                                                float thickness, bool auto_scale,
+                                                bool was_dragging, float thickness, bool auto_scale,
                                                 double visible_extent) {
     constexpr ImGuiMouseButton kDragButton = ImGuiMouseButton_Left;
     const bool mouse_down = ImGui::IsMouseDown(kDragButton);
@@ -542,13 +557,13 @@ InteractiveVectorResult draw_interactive_vector(const char* label, Point head,
         marker_color = &kHoverMarkerColor;
     }
 
-    draw_vector(label, updated_head, convention, marker_style, head_frac, thickness, marker_color);
+    draw_vector(label, updated_head, convention, marker_style, thickness, marker_color);
 
     return {updated_head, state};
 }
 
 void draw_annotation_vector(const char* id, AnnotationVector annotation, AngleConvention convention,
-                            double head_frac, float thickness) {
+                            float thickness) {
     // Muted, semi-transparent gray -- distinct from named vectors, which cycle
     // through ImPlot's saturated default colormap.
     constexpr ImVec4 kAnnotationColor{0.55F, 0.55F, 0.55F, 0.65F};
@@ -560,7 +575,7 @@ void draw_annotation_vector(const char* id, AnnotationVector annotation, AngleCo
 
     const std::string shaft_id = std::string("##annotation_") + id;
     const std::string head_id = std::string("##annotation_head_") + id;
-    plot_arrow_shape(shaft_id, head_id, ptail, phead, head_frac, &kAnnotationColor, thickness);
+    plot_arrow_shape(shaft_id, head_id, ptail, phead, &kAnnotationColor, thickness);
 }
 
 namespace {
