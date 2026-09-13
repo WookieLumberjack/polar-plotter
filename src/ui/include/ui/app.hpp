@@ -7,6 +7,7 @@
 #include "polar_plotting/polar_plot.hpp"
 #include "ui/angle_convention.hpp"
 #include "ui/derived_vectors.hpp"
+#include "ui/plot_plan.hpp"
 #include "ui/polar_display.hpp"
 
 namespace ui {
@@ -91,6 +92,17 @@ private:
     bool auto_scale_{true};
     // Ring interval used verbatim when auto_scale_ is false.
     float manual_ring_interval_{1.0F};
+    // Snapshot of the auto-fit extent taken just before a drag begins, and
+    // held fixed for the drag's whole duration (see draw_plot). With
+    // auto-scale on, the extent auto-fits the dragged vector's own live
+    // magnitude; feeding that same, still-changing magnitude back into the
+    // pixel<->plot conversion used to interpret the drag's mouse position
+    // every frame is a positive feedback loop (each frame's wider view makes
+    // the same screen position map to an even larger magnitude) that runs
+    // away exponentially within seconds. Freezing the view for the drag's
+    // duration breaks the loop; auto-fit resumes normally, in one clean
+    // jump, once the drag ends.
+    polarplot::PlotFrame drag_frozen_extent_{1.0, kAutoFitRings};
 
     void draw_controls();
     // Non-const: click-dragging a vector's tip (see #44/#48) writes the
