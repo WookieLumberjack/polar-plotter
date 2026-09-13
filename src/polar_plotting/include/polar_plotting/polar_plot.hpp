@@ -138,6 +138,26 @@ struct ArrowheadWings {
 /// coincide with \p head.
 [[nodiscard]] ArrowheadWings arrowhead_wing_points(Point tail, Point head, double head_frac);
 
+/// The two endpoints of the short radial tick mark drawn at the
+/// zero-direction arc's start point (12 o'clock / vertical axis), straddling
+/// the arc's own draw radius so it's visually clear that's the arc's
+/// reference point. See \ref zero_direction_arc_tick.
+struct ZeroDirectionTick {
+    Point inner;
+    Point outer;
+};
+
+/// Compute \ref ZeroDirectionTick's endpoints for an arc drawn at \p radius
+/// within a plot of \p extent: a short segment running straight up (the
+/// plot's own +y axis, i.e. `x = 0`) from `radius - 0.025 * extent` to
+/// `radius + 0.025 * extent`, straddling \p radius. \p radius is the caller's
+/// already-computed arc draw radius (e.g. `extent * 0.85`, the zero-direction
+/// arc's own draw radius) -- this function does not derive it. Degenerate
+/// input (\p extent == 0.0) collapses both endpoints to `(0, radius)` rather
+/// than producing a negative-length tick. Pure function -- the test seam for
+/// this geometry, alongside \ref arrowhead_wing_points.
+[[nodiscard]] ZeroDirectionTick zero_direction_arc_tick(double radius, double extent);
+
 /// One explicit tick on the vertical scale ruler (see \ref begin_vector_plot):
 /// \p position is the tick's value along the plot's y axis (i.e. a ring's
 /// radius) and \p label is its formatted text.

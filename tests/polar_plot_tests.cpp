@@ -105,6 +105,26 @@ TEST_CASE("arrowhead_wing_points collapses to the head for a zero-length segment
     REQUIRE_THAT(wings.second.y, WithinAbs(4.0, 1e-12));
 }
 
+TEST_CASE("zero_direction_arc_tick straddles the arc's draw radius along the vertical spoke",
+          "[polar_plot][zero_direction]") {
+    // radius = extent * 0.85 (the arc's own draw radius, as computed by the
+    // caller); half the tick length is 0.025 * extent.
+    const polarplot::ZeroDirectionTick tick = polarplot::zero_direction_arc_tick(8.5, 10.0);
+    REQUIRE_THAT(tick.inner.x, WithinAbs(0.0, 1e-12));
+    REQUIRE_THAT(tick.inner.y, WithinAbs(8.25, 1e-12));
+    REQUIRE_THAT(tick.outer.x, WithinAbs(0.0, 1e-12));
+    REQUIRE_THAT(tick.outer.y, WithinAbs(8.75, 1e-12));
+}
+
+TEST_CASE("zero_direction_arc_tick collapses to a point at radius for a zero extent",
+          "[polar_plot][zero_direction]") {
+    const polarplot::ZeroDirectionTick tick = polarplot::zero_direction_arc_tick(5.0, 0.0);
+    REQUIRE_THAT(tick.inner.x, WithinAbs(0.0, 1e-12));
+    REQUIRE_THAT(tick.inner.y, WithinAbs(5.0, 1e-12));
+    REQUIRE_THAT(tick.outer.x, WithinAbs(0.0, 1e-12));
+    REQUIRE_THAT(tick.outer.y, WithinAbs(5.0, 1e-12));
+}
+
 TEST_CASE("head_frac_for_fixed_pixels converts a fixed pixel length into the matching fraction",
           "[polar_plot][arrowhead]") {
     SECTION("shaft much longer than the target: fraction is a small slice of it") {

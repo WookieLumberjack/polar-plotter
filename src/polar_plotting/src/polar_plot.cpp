@@ -105,6 +105,12 @@ ArrowheadWings arrowhead_wing_points(Point tail, Point head, double head_frac) {
     return {Point{back_x + wing_x, back_y - wing_y}, Point{back_x - wing_x, back_y + wing_y}};
 }
 
+ZeroDirectionTick zero_direction_arc_tick(double radius, double extent) {
+    constexpr double kTickHalfLengthFactor = 0.025;
+    const double half_length = kTickHalfLengthFactor * extent;
+    return {Point{0.0, radius - half_length}, Point{0.0, radius + half_length}};
+}
+
 double head_frac_for_fixed_pixels(double head_length_px, double shaft_length_px) {
     constexpr double kMaxHeadFrac = 0.9;
     if (shaft_length_px <= 0.0) {

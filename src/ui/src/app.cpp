@@ -571,7 +571,19 @@ void App::draw_plot() {
     if (plan.zero_direction_arc_angle) {
         polarplot::ArcStyle arc_style{};
         arc_style.thickness = line_width_;
-        polarplot::draw_angle_arc(extent * 0.85, *plan.zero_direction_arc_angle, arc_style);
+        const double zero_direction_arc_radius = extent * 0.85;
+        polarplot::draw_angle_arc(zero_direction_arc_radius, *plan.zero_direction_arc_angle,
+                                  arc_style);
+
+        // Short tick straddling the arc's start point (12 o'clock), marking
+        // it as the arc's reference point -- gated on the same condition as
+        // the arc itself, so it only ever appears while the arc does.
+        const polarplot::ZeroDirectionTick tick =
+            polarplot::zero_direction_arc_tick(zero_direction_arc_radius, extent);
+        const std::array<double, 2> tick_x{tick.inner.x, tick.outer.x};
+        const std::array<double, 2> tick_y{tick.inner.y, tick.outer.y};
+        const ImPlotSpec tick_spec{ImPlotProp_LineWeight, line_width_};
+        ImPlot::PlotLine("##zero_direction_tick", tick_x.data(), tick_y.data(), 2, tick_spec);
     }
     // Always drawn, right on the outer ring (as opposed to the zero-direction
     // arc's slightly inset radius above) and centered on the plot's
