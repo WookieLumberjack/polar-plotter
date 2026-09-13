@@ -5,6 +5,7 @@ add_library(ui STATIC
     src/derived_vectors.cpp
     src/plot_plan.cpp
     src/polar_display.cpp
+    src/theme.cpp
     src/zero_direction.cpp)
 
 target_include_directories(ui PUBLIC
