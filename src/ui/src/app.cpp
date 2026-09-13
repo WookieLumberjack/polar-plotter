@@ -91,19 +91,28 @@ void App::draw_vector_input(const char* label_prefix, VectorInput& input) {
     PolarDisplay display =
         input.polar_active_ ? input.pending_polar_ : to_polar_display(to_vec(input.xy));
 
-    const std::string amplitude_label = std::string(label_prefix) + ": Amplitude";
-    const std::string phase_label = std::string(label_prefix) + ": Phase (deg)";
-    const std::string real_label = std::string(label_prefix) + ": Real";
-    const std::string imag_label = std::string(label_prefix) + ": Imag";
+    const std::string amplitude_label = std::string(label_prefix) + ": Amp";
+    const std::string phase_label = std::string(label_prefix) + ": Phase";
+    const std::string real_label = std::string(label_prefix) + ": Re";
+    const std::string imag_label = std::string(label_prefix) + ": Im";
 
+    const float half_width = (ImGui::CalcItemWidth() - ImGui::GetStyle().ItemSpacing.x) / 2.0F;
+
+    ImGui::SetNextItemWidth(half_width);
     const bool amp_changed =
         ImGui::InputFloat(amplitude_label.c_str(), &display.amplitude, 0.0F, 0.0F, "%.3f");
     const bool amp_focused = ImGui::IsItemFocused();
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(half_width);
     const bool phase_changed =
         ImGui::InputFloat(phase_label.c_str(), &display.phase_deg, 0.0F, 0.0F, "%.2f");
     const bool phase_focused = ImGui::IsItemFocused();
+
+    ImGui::SetNextItemWidth(half_width);
     const bool real_changed =
         ImGui::InputFloat(real_label.c_str(), input.xy.data(), 0.0F, 0.0F, "%.3f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(half_width);
     const bool imag_changed =
         ImGui::InputFloat(imag_label.c_str(), input.xy.data() + 1, 0.0F, 0.0F, "%.3f");
 
