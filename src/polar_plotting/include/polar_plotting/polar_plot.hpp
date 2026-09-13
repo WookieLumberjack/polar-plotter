@@ -8,6 +8,7 @@
 
 #include <cassert>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -623,6 +624,147 @@ struct RotationIndicatorLabel {
 /// rotation_indicator_label) in \p style's color, so the indicator and its
 /// label always share one call and can never fall out of sync.
 void draw_rotation_indicator(PlotFrame frame, double sweep_sign, ArcStyle style = {});
+
+/// A closed description of everything on-plot this frame, decided by
+/// \c ui::plan_plot (which owns the toggle logic behind it -- see
+/// ui/plot_plan.hpp) but defined here, in \c polar_plotting, purely so
+/// \ref draw_scene can take one by const reference without \c polar_plotting
+/// depending on \c ui (see CLAUDE.md's module table: \c polar_plotting must
+/// not depend on \c ui). Every field is already expressed in
+/// \c polar_plotting's own vocabulary (\ref Point, \ref AngleConvention,
+/// \ref PlotFrame, \ref AnnotationVector) -- nothing here reaches for a
+/// vecmath or ui-domain type. \ref draw_scene loops over this and issues the
+/// matching drawing calls -- no toggle logic of its own left over.
+struct PlotPlan {
+    Point a;
+    Point b;
+    std::optional<Point> sum;
+    std::optional<Point> difference;
+    // Plain-arrow derived vectors, present iff their show_* toggle is on --
+    // for the quotients, also iff the divisor's magnitude is nonzero (see
+    // vecmath::complex_divide).
+    std::optional<Point> difference_ba;
+    std::optional<Point> product;
+    std::optional<Point> quotient_ab;
+    std::optional<Point> quotient_ba;
+
+    /// One entry per non-interactive derived vector currently shown -- a
+    /// list-shaped view over the same values already computed for
+    /// difference/sum/difference_ba/product/quotient_ab/quotient_ba above (no
+    /// new computation). A and B are excluded: they go through
+    /// draw_interactive_vector, a structurally different draw path.
+    struct DerivedVector {
+        const char* label{nullptr};
+        Point point;
+    };
+    // Push order is part of PlotPlan's contract, mirroring
+    // tip_to_tail_annotations' contract below: when present, entries appear
+    // in this fixed order regardless of which toggles produced them --
+    // difference, sum, difference_ba, product, quotient_ab, quotient_ba --
+    // matching draw_scene's on-screen draw/legend order, not ui::plan_plot's
+    // internal computation order (which differs).
+    std::vector<DerivedVector> derived_vectors;
+
+    // 0-4 entries depending on which toggles are on: A - B's tip-to-tail
+    // annotation (if show_difference && show_tip_to_tail), then B - A's (if
+    // show_difference_ba && show_tip_to_tail), then the sum's two (if
+    // show_sum && show_tip_to_tail) -- see ui::plan_plot's push-order
+    // comment.
+    std::vector<AnnotationVector> tip_to_tail_annotations;
+    std::optional<AnnotationVector> difference_segment;
+    // The B - A counterpart to difference_segment above: the free vector
+    // from A's tip to B's tip, present iff show_difference_ba &&
+    // show_difference_segment. Both can be present simultaneously when both
+    // difference directions are shown.
+    std::optional<AnnotationVector> difference_segment_ba;
+    // Present iff the arc should be drawn this frame (transient-focused OR
+    // persistent-toggle), holding the angle to draw it at.
+    std::optional<double> zero_direction_arc_angle;
+    // Composed once from ui::PlotInputs' angle-convention fields, needed to
+    // draw everything above.
+    AngleConvention convention;
+    // Plain sweep sign for the rotation-direction indicator (see
+    // ui::rotation_sweep_sign): +1 counterclockwise, -1 clockwise. Derived
+    // from ui::PlotInputs::rotation_direction alone, independent of
+    // measurement_convention -- never a domain "rotation direction" enum
+    // itself (see docs/adr/0001-polar-plotting-receives-only-composed-angle-sign.md).
+    double rotation_indicator_sweep_sign{1.0};
+    // See ui::auto_fit_extent -- the same values must drive both
+    // draw_polar_grid and the plot's axis limits so they never disagree.
+    // Default matches auto_fit_extent's degenerate-input fallback;
+    // ui::plan_plot always overwrites this before returning.
+    PlotFrame extent{1.0, 4};
+    // Mirrors ui::PlotInputs::auto_scale verbatim: when true, A/B's
+    // manual-scale drag clamp (see draw_interactive_vector's visible_extent
+    // parameter) never applies, since extent itself already grows with the
+    // dragged vector's magnitude; when false, draw_scene clamps a drag to
+    // this frame's extent so it can never move a tip past what's currently
+    // visible.
+    bool auto_scale{true};
+};
+
+/// Presentation choices \ref draw_scene needs but that don't belong in
+/// \ref PlotPlan -- \c PlotPlan/\c ui::plan_plot stay exactly as pure and
+/// theme-agnostic as before this existed (no ImGui/ImPlot dependency,
+/// unit-testable standalone); styling is a presentation concern that never
+/// enters that decision-logic seam. \p color_for is a plain function pointer
+/// (not e.g. std::function) so this struct stays a trivial, copyable value:
+/// called once per currently-shown named vector (A, B, and every shown
+/// derived vector), by that vector's exact label string, to resolve its
+/// shaft/arrowhead/tip color -- replacing a parallel, index-aligned color
+/// list that would reintroduce the same class of ordering hazard this type
+/// eliminates for annotation ids (see \ref draw_scene).
+struct DrawStyle {
+    MarkerColor tip_marker_color;
+    float line_width{2.0F};
+    TipMarkerStyle marker_style{TipMarkerStyle::kDot};
+    MarkerColor (*color_for)(const char* label){nullptr};
+};
+
+/// Bundles \ref draw_interactive_vector's per-call result for both A and B,
+/// returned together from the single \ref draw_scene call that now draws
+/// them both, instead of two separate call-site results.
+struct SceneResult {
+    InteractiveVectorResult a;
+    InteractiveVectorResult b;
+};
+
+/// Draws the entire polar plot body for one frame -- \ref begin_vector_plot
+/// through \ref end_vector_plot -- from \p plan and \p style: the grid, A/B's
+/// interactive draw (hover/drag) plus their length ticks, each shown derived
+/// vector plus its tick, tip-to-tail/difference-segment annotations, the
+/// zero-direction arc plus its tick, and the rotation indicator. Pass the
+/// same \p view_frame given to \ref begin_vector_plot/\ref
+/// draw_rotation_indicator in the pre-\c draw_scene code this replaces (a
+/// \c ui-owned, per-frame-persisted "frozen during a drag" extent -- see
+/// \c ui::App::drag_frozen_extent_ -- so \c polar_plotting itself gains no
+/// new persisted state; \p view_frame is taken fresh each call, exactly like
+/// every other \c polarplot:: function). \p a_was_dragging/\p b_was_dragging
+/// are each vector's own \ref InteractiveVectorResult::state from last frame,
+/// reduced to a bool (see \ref resolve_interaction_state), forwarded to
+/// \ref draw_interactive_vector for A and B respectively.
+///
+/// Internalizes two ordering invariants that previously depended on comment
+/// discipline at the call site: a length tick's color is read via
+/// \c ImPlot::GetLastItemColor() immediately after its vector is drawn, and
+/// tip-to-tail annotation ids are generated from \p plan's
+/// \c tip_to_tail_annotations in its own push order (a documented contract
+/// -- see \ref PlotPlan::tip_to_tail_annotations -- that \ref draw_scene now
+/// depends on directly instead of a caller re-deriving it).
+///
+/// Derived-vector (and A/B) colors come from \p style's \c color_for
+/// callback, called once per label. Returns \c std::nullopt when
+/// \ref begin_vector_plot returns \c false this frame (plot not visible,
+/// e.g. collapsed) -- \ref end_vector_plot is then correctly not called,
+/// mirroring \c begin_vector_plot's own "call end_ iff begin_ returned true"
+/// contract -- otherwise a \ref SceneResult with this frame's A/B
+/// interaction results, for the caller to apply back to its own state
+/// (\c ui::App::apply_interactive_result) and to drive a drag tooltip
+/// (\c ui::App::draw_drag_tooltip), both of which stay \c ui-level concerns
+/// this function knows nothing about.
+[[nodiscard]] std::optional<SceneResult> draw_scene(PlotFrame view_frame, const PlotPlan& plan,
+                                                    const DrawStyle& style, bool a_was_dragging,
+                                                    bool b_was_dragging);
 
 }  // namespace polarplot
 
