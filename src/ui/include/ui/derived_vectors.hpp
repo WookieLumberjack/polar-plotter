@@ -13,15 +13,17 @@
 namespace ui {
 
 /// The 6 derived named vectors computed from two named vectors \c a and \c b.
-/// The two complex quotients are std::optional: nullopt when their divisor
-/// has zero magnitude (see vecmath::complex_divide).
+/// All 6 fields are std::optional for a uniform representation, but only the
+/// two complex quotients can actually be nullopt (when their divisor has zero
+/// magnitude, see vecmath::complex_divide) -- the other four are always
+/// engaged when returned from compute_derived_vectors.
 struct DerivedVectors {
-    vecmath::Vec2 sum;                         ///< A + B
-    vecmath::Vec2 difference_ab;               ///< A - B
-    vecmath::Vec2 difference_ba;               ///< B - A
-    vecmath::Vec2 product;                     ///< A x B (complex product)
-    std::optional<vecmath::Vec2> quotient_ab;  ///< A / B (complex quotient)
-    std::optional<vecmath::Vec2> quotient_ba;  ///< B / A (complex quotient)
+    std::optional<vecmath::Vec2> sum;            ///< A + B
+    std::optional<vecmath::Vec2> difference_ab;  ///< A - B
+    std::optional<vecmath::Vec2> difference_ba;  ///< B - A
+    std::optional<vecmath::Vec2> product;        ///< A x B (complex product)
+    std::optional<vecmath::Vec2> quotient_ab;    ///< A / B (complex quotient)
+    std::optional<vecmath::Vec2> quotient_ba;    ///< B / A (complex quotient)
 };
 
 /// Compute all 6 derived vectors from \p a and \p b.

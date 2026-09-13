@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <numbers>
+#include <optional>
 
 #include "ui/construction.hpp"
 #include "vector_math/vec2.hpp"
@@ -27,6 +28,19 @@ constexpr double kAutoFitMargin = 1.05;
 constexpr double kAutoFitDefaultInterval = 1.0;
 
 polarplot::Point to_point(vecmath::Vec2 v) { return {v.x, v.y}; }
+
+// `derived` when `show` is true and `derived` is engaged, nullopt otherwise.
+// Factored out so plan_plot/auto_fit_extent can read a `show_*`-gated
+// derived-vector field without an extra nested `if` for each one -- nesting
+// that would otherwise push those functions' cognitive complexity over the
+// clang-tidy threshold. sum/difference_ab/difference_ba/product are always
+// engaged in practice when returned from compute_derived_vectors (see
+// DerivedVectors' doc comment), so `derived`'s own nullopt case here is only
+// ever reached for the two genuinely-conditional quotients, or if a caller
+// hasn't populated PlotInputs::derived to match a and b.
+std::optional<vecmath::Vec2> shown(bool show, std::optional<vecmath::Vec2> derived) {
+    return show ? derived : std::nullopt;
+}
 
 polarplot::AnnotationVector to_annotation(const ConstructionVector& construction) {
     return {to_point(construction.start), to_point(construction.vector)};
@@ -88,28 +102,23 @@ std::vector<PlotPlan::DerivedVector> collect_derived_vectors(const PlotPlan& pla
 
 polarplot::PlotFrame auto_fit_extent(const PlotInputs& inputs) {
     double max_magnitude = std::max(vecmath::magnitude(inputs.a), vecmath::magnitude(inputs.b));
-    if (inputs.show_sum) {
-        max_magnitude = std::max(max_magnitude, vecmath::magnitude(inputs.a + inputs.b));
+    if (const auto sum = shown(inputs.show_sum, inputs.derived.sum)) {
+        max_magnitude = std::max(max_magnitude, vecmath::magnitude(*sum));
     }
-    if (inputs.show_difference) {
-        max_magnitude = std::max(max_magnitude, vecmath::magnitude(inputs.a - inputs.b));
+    if (const auto diff = shown(inputs.show_difference, inputs.derived.difference_ab)) {
+        max_magnitude = std::max(max_magnitude, vecmath::magnitude(*diff));
     }
-    if (inputs.show_difference_ba) {
-        max_magnitude = std::max(max_magnitude, vecmath::magnitude(inputs.b - inputs.a));
+    if (const auto diff_ba = shown(inputs.show_difference_ba, inputs.derived.difference_ba)) {
+        max_magnitude = std::max(max_magnitude, vecmath::magnitude(*diff_ba));
     }
-    if (inputs.show_product) {
-        max_magnitude = std::max(max_magnitude,
-                                 vecmath::magnitude(vecmath::complex_multiply(inputs.a, inputs.b)));
+    if (const auto product = shown(inputs.show_product, inputs.derived.product)) {
+        max_magnitude = std::max(max_magnitude, vecmath::magnitude(*product));
     }
-    if (inputs.show_quotient_ab) {
-        if (const auto quotient = vecmath::complex_divide(inputs.a, inputs.b)) {
-            max_magnitude = std::max(max_magnitude, vecmath::magnitude(*quotient));
-        }
+    if (const auto quotient_ab = shown(inputs.show_quotient_ab, inputs.derived.quotient_ab)) {
+        max_magnitude = std::max(max_magnitude, vecmath::magnitude(*quotient_ab));
     }
-    if (inputs.show_quotient_ba) {
-        if (const auto quotient = vecmath::complex_divide(inputs.b, inputs.a)) {
-            max_magnitude = std::max(max_magnitude, vecmath::magnitude(*quotient));
-        }
+    if (const auto quotient_ba = shown(inputs.show_quotient_ba, inputs.derived.quotient_ba)) {
+        max_magnitude = std::max(max_magnitude, vecmath::magnitude(*quotient_ba));
     }
 
     if (max_magnitude <= 0.0) {
@@ -124,9 +133,6 @@ polarplot::PlotFrame auto_fit_extent(const PlotInputs& inputs) {
 polarplot::PlotFrame manual_extent(double ring_interval) { return {ring_interval, kAutoFitRings}; }
 
 PlotPlan plan_plot(const PlotInputs& inputs) {
-    const vecmath::Vec2 sum = inputs.a + inputs.b;
-    const vecmath::Vec2 diff = inputs.a - inputs.b;
-
     PlotPlan plan;
     plan.a = to_point(inputs.a);
     plan.b = to_point(inputs.b);
@@ -144,8 +150,10 @@ PlotPlan plan_plot(const PlotInputs& inputs) {
     // produced them -- A - B's tip-to-tail annotation, then B - A's, then the
     // sum's two -- so a caller drawing tip_to_tail_annotations by index (e.g.
     // an "tip_to_tail_<i>" id) gets a stable, predictable id per entry.
+    if (const auto diff = shown(inputs.show_difference, inputs.derived.difference_ab)) {
+        plan.difference = to_point(*diff);
+    }
     if (inputs.show_difference) {
-        plan.difference = to_point(diff);
         if (inputs.show_tip_to_tail) {
             plan.tip_to_tail_annotations.push_back(
                 to_annotation(tip_to_tail_difference(inputs.a, inputs.b)));
@@ -155,8 +163,10 @@ PlotPlan plan_plot(const PlotInputs& inputs) {
         }
     }
 
+    if (const auto diff_ba = shown(inputs.show_difference_ba, inputs.derived.difference_ba)) {
+        plan.difference_ba = to_point(*diff_ba);
+    }
     if (inputs.show_difference_ba) {
-        plan.difference_ba = to_point(inputs.b - inputs.a);
         if (inputs.show_tip_to_tail) {
             plan.tip_to_tail_annotations.push_back(
                 to_annotation(tip_to_tail_difference_ba(inputs.a, inputs.b)));
@@ -166,26 +176,22 @@ PlotPlan plan_plot(const PlotInputs& inputs) {
         }
     }
 
-    if (inputs.show_sum) {
-        plan.sum = to_point(sum);
-        if (inputs.show_tip_to_tail) {
-            const SumConstruction construction = tip_to_tail_sum(inputs.a, inputs.b);
-            plan.tip_to_tail_annotations.push_back(to_annotation(construction.b_from_a_tip));
-            plan.tip_to_tail_annotations.push_back(to_annotation(construction.a_from_b_tip));
-        }
+    if (const auto sum = shown(inputs.show_sum, inputs.derived.sum)) {
+        plan.sum = to_point(*sum);
     }
-    if (inputs.show_product) {
-        plan.product = to_point(vecmath::complex_multiply(inputs.a, inputs.b));
+    if (inputs.show_sum && inputs.show_tip_to_tail) {
+        const SumConstruction construction = tip_to_tail_sum(inputs.a, inputs.b);
+        plan.tip_to_tail_annotations.push_back(to_annotation(construction.b_from_a_tip));
+        plan.tip_to_tail_annotations.push_back(to_annotation(construction.a_from_b_tip));
     }
-    if (inputs.show_quotient_ab) {
-        if (const auto quotient = vecmath::complex_divide(inputs.a, inputs.b)) {
-            plan.quotient_ab = to_point(*quotient);
-        }
+    if (const auto product = shown(inputs.show_product, inputs.derived.product)) {
+        plan.product = to_point(*product);
     }
-    if (inputs.show_quotient_ba) {
-        if (const auto quotient = vecmath::complex_divide(inputs.b, inputs.a)) {
-            plan.quotient_ba = to_point(*quotient);
-        }
+    if (const auto quotient_ab = shown(inputs.show_quotient_ab, inputs.derived.quotient_ab)) {
+        plan.quotient_ab = to_point(*quotient_ab);
+    }
+    if (const auto quotient_ba = shown(inputs.show_quotient_ba, inputs.derived.quotient_ba)) {
+        plan.quotient_ba = to_point(*quotient_ba);
     }
 
     if (inputs.zero_direction_input_focused || inputs.show_zero_direction_arc_persistent) {

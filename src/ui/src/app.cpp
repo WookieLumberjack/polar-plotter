@@ -174,7 +174,9 @@ void App::draw_derived_vectors_table(const DerivedVectors& derived) {
     ImGui::EndTable();
 }
 
-App::App() { apply_current_theme(); }
+App::App() : derived_(compute_derived_vectors(to_vec(a_.xy), to_vec(b_.xy))) {
+    apply_current_theme();
+}
 
 App::App(std::filesystem::path config_path) : config_path_(std::move(config_path)) {
     if (auto cfg = load_config(config_path_)) {
@@ -191,6 +193,10 @@ App::App(std::filesystem::path config_path) : config_path_(std::move(config_path
         manual_ring_interval_ = cfg->manual_ring_interval;
         theme_ = cfg->theme;
     }
+    // a_/b_ may have just been overwritten from cfg above, so derived_ is
+    // (re)computed here rather than relying on the member initializer used by
+    // the default constructor -- see derived_'s doc comment.
+    derived_ = compute_derived_vectors(to_vec(a_.xy), to_vec(b_.xy));
     apply_current_theme();
 }
 
@@ -376,19 +382,23 @@ void App::draw_controls() {
     ImGui::SameLine();
     ImGui::Checkbox("Show A x B", &show_product_);
 
-    const DerivedVectors derived = compute_derived_vectors(a, b);
+    // Single call site for compute_derived_vectors (see derived_'s doc
+    // comment): this same frame's table below and next frame's draw_plot()
+    // (via PlotInputs::derived) both read this member instead of
+    // recomputing.
+    derived_ = compute_derived_vectors(a, b);
 
-    ImGui::BeginDisabled(!derived.quotient_ab.has_value());
+    ImGui::BeginDisabled(!derived_.quotient_ab.has_value());
     ImGui::Checkbox("Show A / B", &show_quotient_ab_);
     ImGui::EndDisabled();
-    if (!derived.quotient_ab) {
+    if (!derived_.quotient_ab) {
         show_quotient_ab_ = false;
     }
     ImGui::SameLine();
-    ImGui::BeginDisabled(!derived.quotient_ba.has_value());
+    ImGui::BeginDisabled(!derived_.quotient_ba.has_value());
     ImGui::Checkbox("Show B / A", &show_quotient_ba_);
     ImGui::EndDisabled();
-    if (!derived.quotient_ba) {
+    if (!derived_.quotient_ba) {
         show_quotient_ba_ = false;
     }
 
@@ -418,7 +428,7 @@ void App::draw_controls() {
     ImGui::Text("angle(A, B) = %.2f deg", vecmath::angle_between(a, b) * kRadToDeg);
 
     ImGui::SeparatorText("Derived vectors");
-    draw_derived_vectors_table(derived);
+    draw_derived_vectors_table(derived_);
 }
 
 void App::apply_interactive_result(VectorInput& input,
@@ -441,6 +451,7 @@ void App::draw_plot() {
     const PlotPlan plan = plan_plot(PlotInputs{
         .a = a,
         .b = b,
+        .derived = derived_,
         .show_sum = show_sum_,
         .show_difference = show_difference_,
         .show_tip_to_tail = show_tip_to_tail_,
