@@ -15,8 +15,12 @@ constexpr double kDegToRad = std::numbers::pi / 180.0;
 
 // Padding applied to the largest shown vector's magnitude before snapping up
 // to a nice ring interval, so vector tips don't sit exactly on the outer
-// ring.
-constexpr double kAutoFitMargin = 1.2;
+// ring. Kept small: the outer ring itself is rarely reached in practice
+// (the largest vector often lands mid-plot instead) mostly because of gaps
+// between successive "nice" ring intervals (e.g. 1 -> 2 is already a 100%
+// jump), not this margin -- a bigger margin only makes that worse, so this
+// stays just large enough to keep the tip visibly clear of the ring.
+constexpr double kAutoFitMargin = 1.05;
 
 // Fallback ring interval used when every shown vector is (numerically) at
 // the origin, so the view never collapses to a zero/degenerate extent.
