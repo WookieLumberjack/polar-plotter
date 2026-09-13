@@ -7,6 +7,7 @@
 #include <optional>
 
 #include "ui/construction.hpp"
+#include "ui/named_vector_spec.hpp"
 #include "vector_math/vec2.hpp"
 
 namespace ui {
@@ -28,19 +29,6 @@ constexpr double kAutoFitMargin = 1.05;
 constexpr double kAutoFitDefaultInterval = 1.0;
 
 polarplot::Point to_point(vecmath::Vec2 v) { return {v.x, v.y}; }
-
-// `derived` when `show` is true and `derived` is engaged, nullopt otherwise.
-// Factored out so plan_plot/auto_fit_extent can read a `show_*`-gated
-// derived-vector field without an extra nested `if` for each one -- nesting
-// that would otherwise push those functions' cognitive complexity over the
-// clang-tidy threshold. sum/difference_ab/difference_ba/product are always
-// engaged in practice when returned from compute_derived_vectors (see
-// DerivedVectors' doc comment), so `derived`'s own nullopt case here is only
-// ever reached for the two genuinely-conditional quotients, or if a caller
-// hasn't populated PlotInputs::derived to match a and b.
-std::optional<vecmath::Vec2> shown(bool show, std::optional<vecmath::Vec2> derived) {
-    return show ? derived : std::nullopt;
-}
 
 polarplot::AnnotationVector to_annotation(const ConstructionVector& construction) {
     return {to_point(construction.start), to_point(construction.vector)};
@@ -70,30 +58,24 @@ double snap_up_to_nice_step(double value) {
     return kSteps.back() * decade;
 }
 
-// Push order matches App::draw_plot's draw/legend order (see
-// PlotPlan::derived_vectors' contract comment), not plan_plot's computation
-// order for the six named optional fields above -- purely a list-shaped view
-// over values plan_plot has already computed, no new computation. Factored
-// out of plan_plot to keep that function's cognitive complexity down.
-std::vector<PlotPlan::DerivedVector> collect_derived_vectors(const PlotPlan& plan) {
+// Push order follows kNamedVectorSpecs' own order (A/B's accessor-less
+// entries skipped), which is itself declared to match App::draw_plot's
+// draw/legend order (see PlotPlan::derived_vectors' contract comment) --
+// this is the single generic loop that replaced six hand-written
+// `if (plan.xxx)` blocks. A toggle gates whether a derived vector is
+// considered at all; the accessor's own nullopt (only ever the two
+// quotients, when their divisor has zero magnitude) then independently
+// excludes it even when toggled on. Factored out of plan_plot to keep that
+// function's cognitive complexity down.
+std::vector<PlotPlan::DerivedVector> collect_derived_vectors(const PlotInputs& inputs) {
     std::vector<PlotPlan::DerivedVector> derived_vectors;
-    if (plan.difference) {
-        derived_vectors.push_back({"A - B", *plan.difference});
-    }
-    if (plan.sum) {
-        derived_vectors.push_back({"A + B", *plan.sum});
-    }
-    if (plan.difference_ba) {
-        derived_vectors.push_back({"B - A", *plan.difference_ba});
-    }
-    if (plan.product) {
-        derived_vectors.push_back({"A x B", *plan.product});
-    }
-    if (plan.quotient_ab) {
-        derived_vectors.push_back({"A / B", *plan.quotient_ab});
-    }
-    if (plan.quotient_ba) {
-        derived_vectors.push_back({"B / A", *plan.quotient_ba});
+    for (const NamedVectorSpec& spec : kNamedVectorSpecs) {
+        if (spec.accessor == nullptr || !(inputs.*spec.toggle)) {
+            continue;
+        }
+        if (const auto value = inputs.derived.*spec.accessor) {
+            derived_vectors.push_back({spec.label, to_point(*value)});
+        }
     }
     return derived_vectors;
 }
@@ -102,23 +84,13 @@ std::vector<PlotPlan::DerivedVector> collect_derived_vectors(const PlotPlan& pla
 
 polarplot::PlotFrame auto_fit_extent(const PlotInputs& inputs) {
     double max_magnitude = std::max(vecmath::magnitude(inputs.a), vecmath::magnitude(inputs.b));
-    if (const auto sum = shown(inputs.show_sum, inputs.derived.sum)) {
-        max_magnitude = std::max(max_magnitude, vecmath::magnitude(*sum));
-    }
-    if (const auto diff = shown(inputs.show_difference, inputs.derived.difference_ab)) {
-        max_magnitude = std::max(max_magnitude, vecmath::magnitude(*diff));
-    }
-    if (const auto diff_ba = shown(inputs.show_difference_ba, inputs.derived.difference_ba)) {
-        max_magnitude = std::max(max_magnitude, vecmath::magnitude(*diff_ba));
-    }
-    if (const auto product = shown(inputs.show_product, inputs.derived.product)) {
-        max_magnitude = std::max(max_magnitude, vecmath::magnitude(*product));
-    }
-    if (const auto quotient_ab = shown(inputs.show_quotient_ab, inputs.derived.quotient_ab)) {
-        max_magnitude = std::max(max_magnitude, vecmath::magnitude(*quotient_ab));
-    }
-    if (const auto quotient_ba = shown(inputs.show_quotient_ba, inputs.derived.quotient_ba)) {
-        max_magnitude = std::max(max_magnitude, vecmath::magnitude(*quotient_ba));
+    for (const NamedVectorSpec& spec : kNamedVectorSpecs) {
+        if (spec.accessor == nullptr || !(inputs.*spec.toggle)) {
+            continue;
+        }
+        if (const auto value = inputs.derived.*spec.accessor) {
+            max_magnitude = std::max(max_magnitude, vecmath::magnitude(*value));
+        }
     }
 
     if (max_magnitude <= 0.0) {
@@ -150,9 +122,6 @@ PlotPlan plan_plot(const PlotInputs& inputs) {
     // produced them -- A - B's tip-to-tail annotation, then B - A's, then the
     // sum's two -- so a caller drawing tip_to_tail_annotations by index (e.g.
     // an "tip_to_tail_<i>" id) gets a stable, predictable id per entry.
-    if (const auto diff = shown(inputs.show_difference, inputs.derived.difference_ab)) {
-        plan.difference = to_point(*diff);
-    }
     if (inputs.show_difference) {
         if (inputs.show_tip_to_tail) {
             plan.tip_to_tail_annotations.push_back(
@@ -163,9 +132,6 @@ PlotPlan plan_plot(const PlotInputs& inputs) {
         }
     }
 
-    if (const auto diff_ba = shown(inputs.show_difference_ba, inputs.derived.difference_ba)) {
-        plan.difference_ba = to_point(*diff_ba);
-    }
     if (inputs.show_difference_ba) {
         if (inputs.show_tip_to_tail) {
             plan.tip_to_tail_annotations.push_back(
@@ -176,29 +142,17 @@ PlotPlan plan_plot(const PlotInputs& inputs) {
         }
     }
 
-    if (const auto sum = shown(inputs.show_sum, inputs.derived.sum)) {
-        plan.sum = to_point(*sum);
-    }
     if (inputs.show_sum && inputs.show_tip_to_tail) {
         const SumConstruction construction = tip_to_tail_sum(inputs.a, inputs.b);
         plan.tip_to_tail_annotations.push_back(to_annotation(construction.b_from_a_tip));
         plan.tip_to_tail_annotations.push_back(to_annotation(construction.a_from_b_tip));
-    }
-    if (const auto product = shown(inputs.show_product, inputs.derived.product)) {
-        plan.product = to_point(*product);
-    }
-    if (const auto quotient_ab = shown(inputs.show_quotient_ab, inputs.derived.quotient_ab)) {
-        plan.quotient_ab = to_point(*quotient_ab);
-    }
-    if (const auto quotient_ba = shown(inputs.show_quotient_ba, inputs.derived.quotient_ba)) {
-        plan.quotient_ba = to_point(*quotient_ba);
     }
 
     if (inputs.zero_direction_input_focused || inputs.show_zero_direction_arc_persistent) {
         plan.zero_direction_arc_angle = plan.convention.zero_direction;
     }
 
-    plan.derived_vectors = collect_derived_vectors(plan);
+    plan.derived_vectors = collect_derived_vectors(inputs);
 
     return plan;
 }

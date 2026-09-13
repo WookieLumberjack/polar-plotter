@@ -57,6 +57,19 @@ PlotFrame auto_fit_extent_from(PlotInputs inputs) {
     return ui::auto_fit_extent(inputs);
 }
 
+// PlotPlan no longer carries the six named optional fields (sum, difference,
+// etc.) -- derived_vectors (see its push-order contract) is the single place
+// a derived vector's presence/value is now observable, keyed by its exact
+// label. nullopt when `label` isn't present in plan.derived_vectors at all.
+std::optional<polarplot::Point> derived_point(const PlotPlan& plan, const std::string& label) {
+    for (const PlotPlan::DerivedVector& entry : plan.derived_vectors) {
+        if (label == entry.label) {
+            return entry.point;
+        }
+    }
+    return std::nullopt;
+}
+
 }  // namespace
 
 TEST_CASE("plan_plot always populates a, b, and the composed convention", "[plot_plan]") {
@@ -68,59 +81,54 @@ TEST_CASE("plan_plot always populates a, b, and the composed convention", "[plot
     CHECK(points_equal(plan.b, {kB.x, kB.y}));
     CHECK(plan.convention.zero_direction == 0.0);
     CHECK(plan.convention.angle_sign == 1.0);
-    CHECK_FALSE(plan.sum.has_value());
-    CHECK_FALSE(plan.difference.has_value());
     CHECK(plan.tip_to_tail_annotations.empty());
     CHECK_FALSE(plan.difference_segment.has_value());
     CHECK_FALSE(plan.difference_segment_ba.has_value());
     CHECK_FALSE(plan.zero_direction_arc_angle.has_value());
-    CHECK_FALSE(plan.difference_ba.has_value());
-    CHECK_FALSE(plan.product.has_value());
-    CHECK_FALSE(plan.quotient_ab.has_value());
-    CHECK_FALSE(plan.quotient_ba.has_value());
+    CHECK(plan.derived_vectors.empty());
 }
 
 TEST_CASE("plan_plot populates the plain-arrow derived vectors only when toggled on",
           "[plot_plan]") {
     SECTION("all four off: none present") {
         const PlotPlan plan = plan_plot_from(PlotInputs{.a = kA, .b = kB});
-        CHECK_FALSE(plan.difference_ba.has_value());
-        CHECK_FALSE(plan.product.has_value());
-        CHECK_FALSE(plan.quotient_ab.has_value());
-        CHECK_FALSE(plan.quotient_ba.has_value());
+        CHECK_FALSE(derived_point(plan, "B - A").has_value());
+        CHECK_FALSE(derived_point(plan, "A x B").has_value());
+        CHECK_FALSE(derived_point(plan, "A / B").has_value());
+        CHECK_FALSE(derived_point(plan, "B / A").has_value());
     }
 
     SECTION("show_difference_ba on: B - A present") {
         const PlotPlan plan =
             plan_plot_from(PlotInputs{.a = kA, .b = kB, .show_difference_ba = true});
         const Vec2 expected = kB - kA;
-        CHECK(points_equal(require_value(plan.difference_ba), {expected.x, expected.y}));
+        CHECK(points_equal(require_value(derived_point(plan, "B - A")), {expected.x, expected.y}));
     }
 
     SECTION("show_product on: A x B present") {
         const PlotPlan plan = plan_plot_from(PlotInputs{.a = kA, .b = kB, .show_product = true});
         const Vec2 expected = vecmath::complex_multiply(kA, kB);
-        CHECK(points_equal(require_value(plan.product), {expected.x, expected.y}));
+        CHECK(points_equal(require_value(derived_point(plan, "A x B")), {expected.x, expected.y}));
     }
 
     SECTION("show_quotient_ab on: A / B present") {
         const PlotPlan plan =
             plan_plot_from(PlotInputs{.a = kA, .b = kB, .show_quotient_ab = true});
         const Vec2 expected = require_value(vecmath::complex_divide(kA, kB));
-        CHECK(points_equal(require_value(plan.quotient_ab), {expected.x, expected.y}));
+        CHECK(points_equal(require_value(derived_point(plan, "A / B")), {expected.x, expected.y}));
     }
 
     SECTION("show_quotient_ba on: B / A present") {
         const PlotPlan plan =
             plan_plot_from(PlotInputs{.a = kA, .b = kB, .show_quotient_ba = true});
         const Vec2 expected = require_value(vecmath::complex_divide(kB, kA));
-        CHECK(points_equal(require_value(plan.quotient_ba), {expected.x, expected.y}));
+        CHECK(points_equal(require_value(derived_point(plan, "B / A")), {expected.x, expected.y}));
     }
 
     SECTION("show_quotient_ab on but B is zero: quotient stays absent despite the toggle") {
         const PlotPlan plan =
             plan_plot_from(PlotInputs{.a = kA, .b = Vec2{0.0, 0.0}, .show_quotient_ab = true});
-        CHECK_FALSE(plan.quotient_ab.has_value());
+        CHECK_FALSE(derived_point(plan, "A / B").has_value());
     }
 }
 
@@ -128,21 +136,22 @@ TEST_CASE("sum shown/hidden x tip-to-tail on/off", "[plot_plan]") {
     SECTION("sum hidden: no sum, no tip-to-tail annotations from the sum side") {
         const PlotPlan plan = plan_plot_from(
             PlotInputs{.a = kA, .b = kB, .show_sum = false, .show_tip_to_tail = true});
-        CHECK_FALSE(plan.sum.has_value());
+        CHECK_FALSE(derived_point(plan, "A + B").has_value());
         CHECK(plan.tip_to_tail_annotations.empty());
     }
 
     SECTION("sum shown, tip-to-tail off: sum present, no annotations") {
         const PlotPlan plan = plan_plot_from(
             PlotInputs{.a = kA, .b = kB, .show_sum = true, .show_tip_to_tail = false});
-        CHECK(points_equal(require_value(plan.sum), {(kA + kB).x, (kA + kB).y}));
+        CHECK(
+            points_equal(require_value(derived_point(plan, "A + B")), {(kA + kB).x, (kA + kB).y}));
         CHECK(plan.tip_to_tail_annotations.empty());
     }
 
     SECTION("sum shown, tip-to-tail on: sum present, both parallelogram paths included") {
         const PlotPlan plan = plan_plot_from(
             PlotInputs{.a = kA, .b = kB, .show_sum = true, .show_tip_to_tail = true});
-        REQUIRE(plan.sum.has_value());
+        CHECK(derived_point(plan, "A + B").has_value());
         REQUIRE(plan.tip_to_tail_annotations.size() == 2);
         CHECK(annotations_equal(plan.tip_to_tail_annotations[0], {{kA.x, kA.y}, {kB.x, kB.y}}));
         CHECK(annotations_equal(plan.tip_to_tail_annotations[1], {{kB.x, kB.y}, {kA.x, kA.y}}));
@@ -157,7 +166,7 @@ TEST_CASE("difference shown/hidden x tip-to-tail on/off x difference-segment on/
                                                         .show_difference = false,
                                                         .show_tip_to_tail = true,
                                                         .show_difference_segment = true});
-        CHECK_FALSE(plan.difference.has_value());
+        CHECK_FALSE(derived_point(plan, "A - B").has_value());
         CHECK(plan.tip_to_tail_annotations.empty());
         CHECK_FALSE(plan.difference_segment.has_value());
     }
@@ -168,7 +177,8 @@ TEST_CASE("difference shown/hidden x tip-to-tail on/off x difference-segment on/
                                                         .show_difference = true,
                                                         .show_tip_to_tail = false,
                                                         .show_difference_segment = false});
-        CHECK(points_equal(require_value(plan.difference), {(kA - kB).x, (kA - kB).y}));
+        CHECK(
+            points_equal(require_value(derived_point(plan, "A - B")), {(kA - kB).x, (kA - kB).y}));
         CHECK(plan.tip_to_tail_annotations.empty());
         CHECK_FALSE(plan.difference_segment.has_value());
     }
@@ -214,7 +224,7 @@ TEST_CASE("difference_ba shown/hidden x tip-to-tail on/off x difference-segment 
                                                         .show_tip_to_tail = true,
                                                         .show_difference_segment = true,
                                                         .show_difference_ba = false});
-        CHECK_FALSE(plan.difference_ba.has_value());
+        CHECK_FALSE(derived_point(plan, "B - A").has_value());
         CHECK(plan.tip_to_tail_annotations.empty());
         CHECK_FALSE(plan.difference_segment_ba.has_value());
     }
@@ -225,7 +235,8 @@ TEST_CASE("difference_ba shown/hidden x tip-to-tail on/off x difference-segment 
                                                         .show_tip_to_tail = false,
                                                         .show_difference_segment = false,
                                                         .show_difference_ba = true});
-        CHECK(points_equal(require_value(plan.difference_ba), {(kB - kA).x, (kB - kA).y}));
+        CHECK(
+            points_equal(require_value(derived_point(plan, "B - A")), {(kB - kA).x, (kB - kA).y}));
         CHECK(plan.tip_to_tail_annotations.empty());
         CHECK_FALSE(plan.difference_segment_ba.has_value());
     }
@@ -288,8 +299,8 @@ TEST_CASE("both difference directions shown together: both constructions render 
                                                     .show_difference_segment = true,
                                                     .show_difference_ba = true});
 
-    REQUIRE(plan.difference.has_value());
-    REQUIRE(plan.difference_ba.has_value());
+    CHECK(derived_point(plan, "A - B").has_value());
+    CHECK(derived_point(plan, "B - A").has_value());
     // Push order: A - B's tip-to-tail annotation precedes B - A's.
     REQUIRE(plan.tip_to_tail_annotations.size() == 2);
     CHECK(annotations_equal(plan.tip_to_tail_annotations[0], {{kA.x, kA.y}, {-kB.x, -kB.y}}));
@@ -399,6 +410,17 @@ TEST_CASE("auto_fit_extent only folds in magnitudes of vectors currently shown",
         CHECK_THAT(extent.extent(), WithinRel(20.0));
     }
 
+    SECTION("B - A shown but toggled off after: hidden magnitude is excluded from the extent") {
+        const PlotFrame shown = auto_fit_extent_from(
+            PlotInputs{.a = {5.0, 0.0}, .b = {-5.0, 0.0}, .show_difference_ba = true});
+        const PlotFrame hidden = auto_fit_extent_from(
+            PlotInputs{.a = {5.0, 0.0}, .b = {-5.0, 0.0}, .show_difference_ba = false});
+        // Toggling B - A off drops the extent back down to A/B's own
+        // magnitude (5) instead of the much larger B - A (10).
+        CHECK_THAT(hidden.extent(), WithinRel(8.0));
+        CHECK(hidden.extent() < shown.extent());
+    }
+
     SECTION("A x B (product) shown grows the extent to cover it when it's the largest vector") {
         const PlotFrame extent = auto_fit_extent_from(
             PlotInputs{.a = {3.0, 0.0}, .b = {0.0, 4.0}, .show_product = true});
@@ -439,6 +461,20 @@ TEST_CASE("auto_fit_extent only folds in magnitudes of vectors currently shown",
         // target 3.15, desired 0.7875 => snaps to 1.
         CHECK_THAT(extent.ring_interval(), WithinRel(1.0));
         CHECK_THAT(extent.extent(), WithinRel(4.0));
+    }
+
+    SECTION(
+        "a zero-magnitude divisor excludes only the corresponding quotient's magnitude, not "
+        "both") {
+        // A / B is undefined (B is zero) but B / A is well-defined; toggling
+        // both on should still fold in B / A's magnitude even though A / B
+        // contributes nothing.
+        const PlotFrame extent = auto_fit_extent_from(PlotInputs{
+            .a = {1.0, 0.0}, .b = {0.0, 0.0}, .show_quotient_ab = true, .show_quotient_ba = true});
+        // B / A = 0 / 1 = (0, 0), magnitude 0 -- doesn't grow the extent past
+        // A alone (magnitude 1): target 1.05, desired 0.2625 => snaps to 0.5.
+        CHECK_THAT(extent.ring_interval(), WithinRel(0.5));
+        CHECK_THAT(extent.extent(), WithinRel(2.0));
     }
 
     SECTION("a tighter margin fits a vector into a smaller ring interval than a looser one would") {
@@ -546,8 +582,8 @@ TEST_CASE("derived_vectors: order contract across representative toggle combinat
 
     SECTION(
         "all six shown: fixed order difference, sum, difference_ba, product, quotient_ab, "
-        "quotient_ba -- matching App::draw_plot's draw order, not plan_plot's computation "
-        "order") {
+        "quotient_ba -- matching App::draw_plot's draw order, not kNamedVectorSpecs' internal "
+        "layout by itself") {
         const PlotPlan plan = plan_plot_from(PlotInputs{.a = kA,
                                                         .b = kB,
                                                         .show_sum = true,
@@ -620,6 +656,17 @@ TEST_CASE("derived_vectors: order contract across representative toggle combinat
         CHECK(plan.derived_vectors.empty());
     }
 
+    SECTION(
+        "show_quotient_ab and show_quotient_ba both on but B is zero: only the well-defined "
+        "quotient (B / A) is included") {
+        const PlotPlan plan = plan_plot_from(PlotInputs{
+            .a = kA, .b = Vec2{0.0, 0.0}, .show_quotient_ab = true, .show_quotient_ba = true});
+        const Vec2 expected = require_value(vecmath::complex_divide(Vec2{0.0, 0.0}, kA));
+        REQUIRE(plan.derived_vectors.size() == 1);
+        CHECK(std::string(plan.derived_vectors[0].label) == "B / A");
+        CHECK(points_equal(plan.derived_vectors[0].point, {expected.x, expected.y}));
+    }
+
     SECTION("only show_sum on: single entry, A + B") {
         const PlotPlan plan = plan_plot_from(PlotInputs{.a = kA, .b = kB, .show_sum = true});
         const Vec2 expected = kA + kB;
@@ -634,6 +681,18 @@ TEST_CASE("derived_vectors: order contract across representative toggle combinat
         REQUIRE(plan.derived_vectors.size() == 1);
         CHECK(std::string(plan.derived_vectors[0].label) == "A - B");
         CHECK(points_equal(plan.derived_vectors[0].point, {expected.x, expected.y}));
+    }
+
+    SECTION("toggling a derived vector off excludes it from derived_vectors even among others") {
+        const PlotPlan all_on = plan_plot_from(PlotInputs{
+            .a = kA, .b = kB, .show_sum = true, .show_difference_ba = true, .show_product = true});
+        REQUIRE(all_on.derived_vectors.size() == 3);
+
+        const PlotPlan sum_off = plan_plot_from(PlotInputs{
+            .a = kA, .b = kB, .show_sum = false, .show_difference_ba = true, .show_product = true});
+        REQUIRE(sum_off.derived_vectors.size() == 2);
+        CHECK(std::string(sum_off.derived_vectors[0].label) == "B - A");
+        CHECK(std::string(sum_off.derived_vectors[1].label) == "A x B");
     }
 }
 

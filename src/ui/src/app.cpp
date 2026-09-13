@@ -16,10 +16,10 @@
 #include "polar_plotting/polar_plot.hpp"
 #include "ui/config.hpp"
 #include "ui/derived_vectors.hpp"
+#include "ui/named_vector_spec.hpp"
 #include "ui/plot_plan.hpp"
 #include "ui/polar_display.hpp"
 #include "ui/theme.hpp"
-#include "ui/vector_palette.hpp"
 #include "ui/zero_direction.hpp"
 #include "vector_math/vec2.hpp"
 
@@ -488,7 +488,7 @@ void App::draw_plot() {
         .tip_marker_color = to_marker_color(theme_style(theme_).text),
         .line_width = line_width_,
         .marker_style = marker_style_,
-        .color_for = &vector_color,
+        .color_for = &named_vector_color,
     };
 
     const std::optional<polarplot::SceneResult> result =
