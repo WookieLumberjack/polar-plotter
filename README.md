@@ -4,6 +4,28 @@ Interactive desktop tool for learning 2D vector math: enter vector quantities,
 plot them on a polar canvas, and see vector operations (sum, difference, dot
 product, angle between) update live. Built with Dear ImGui + ImPlot.
 
+|                                        |                                        |
+| -------------------------------------- | -------------------------------------- |
+| ![Slate theme](docs/images/screenshot-slate.png) | ![Paper theme](docs/images/screenshot-paper.png) |
+
+## Features
+
+- **Two input styles, live-converted**: enter each vector as
+  Amplitude/Phase or Real/Imaginary — both stay in sync as you type — or
+  drag a vector's tip directly on the plot.
+- **Derived vectors, each independently toggleable**: sum, difference (both
+  `A − B` and `B − A`), and the complex product/quotient (treating each
+  vector as a complex number: amplitude multiplies/divides, phase
+  adds/subtracts).
+- **Configurable angle convention**: choose where 0° points — numerically or
+  in plain language (e.g. "45° right of top") — and which way angles
+  increase (rotation direction + measurement convention).
+- **Geometric proof aids**: tip-to-tail construction and a difference-segment
+  overlay show *why* a sum/difference vector is where it is, and a
+  persistent zero-direction arc documents a specific angle for a screenshot.
+- **Five built-in themes** (dark and light, including the "Paper" theme
+  above), and your last-used vectors/settings are remembered between runs.
+
 ## Requirements
 
 - Clang with C++23 support
@@ -107,3 +129,49 @@ or filter by regex through CTest:
 ```sh
 ctest --preset debug -R <regex>
 ```
+
+## Architecture
+
+One-way module dependency graph — each module only depends on what's below
+it, never sideways or back up:
+
+```mermaid
+graph TD
+    app["app/<br/>GLFW/OpenGL host, main loop"] --> ui
+    ui["ui (ui::)<br/>widgets, app state, Config"] --> polarplot
+    ui --> vecmath
+    polarplot["polar_plotting (polarplot::)<br/>Dear ImGui + ImPlot rendering"]
+    vecmath["vector_math (vecmath::)<br/>pure C++ vector math"]
+```
+
+`polar_plotting` depends on nothing but Dear ImGui and ImPlot — not on
+`vector_math` or `ui` — so it's meant to be liftable wholesale into another
+project: copy `src/polar_plotting/` (its `include/polar_plotting` and `src/`
+plus its `CMakeLists.txt`), and convert your own vector/point type to its
+`polarplot::Point` at the call site, the same way `ui` does today.
+
+Each module lives at `src/<name>/{include/<name>/*.hpp, src/*.cpp}` with its
+own `CMakeLists.txt` exporting a `polar_plotter::<name>` alias target.
+
+## Development approach
+
+Built collaboratively with [Claude Code](https://claude.com/claude-code)
+using an agent-skills workflow, in the spirit of Matt Pocock's approach to
+structuring AI coding sessions: strict TDD (a failing Catch2 test before any
+production code), a domain glossary (`CONTEXT.md`) and ADRs (`docs/adr/`)
+kept current as design decisions are made, and a "grilling" step that
+interrogates a plan before implementation rather than after. CI (GitHub
+Actions) builds and tests on Linux, macOS, and Windows (MSYS2 `clang64`) on
+every push/PR, plus a separate `clang-format`/`clang-tidy` lint job.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+Bundled dependencies keep their own licenses: [Dear
+ImGui](https://github.com/ocornut/imgui) and
+[ImPlot](https://github.com/epezent/implot) (MIT), [GLFW](https://www.glfw.org/)
+(zlib/libpng), [Catch2](https://github.com/catchorg/Catch2) (Boost Software
+License 1.0, test-only — not part of the built application), and
+[JetBrains Mono](https://www.jetbrains.com/lp/mono/) (SIL Open Font License
+1.1), embedded into the binary as the app's default font.
