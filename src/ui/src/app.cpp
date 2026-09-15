@@ -351,10 +351,16 @@ void App::draw_controls() {
 
     // Degree fields only ever hold a signed angle (raw zero-direction can go
     // negative; degrees-from-top is clamped to [0, 180]), so size their text
-    // box to "-360.00" rather than the panel's default full-width -- and size
-    // the Side combo to its longest option ("right") plus its arrow.
-    const float degree_field_width =
-        ImGui::CalcTextSize("-360.00").x + (ImGui::GetStyle().FramePadding.x * 2.0F);
+    // box to "-360.00" rather than the panel's default full-width. InputFloat
+    // draws "-"/"+" step buttons (non-zero step) *inside* the width passed to
+    // SetNextItemWidth, shrinking the text box by two button-widths -- so the
+    // requested width must include that back out, or the text box collapses
+    // to a sliver. The Side combo has no such buttons; size it to its longest
+    // option ("right") plus its dropdown arrow.
+    const float step_button_width = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x;
+    const float degree_field_width = ImGui::CalcTextSize("-360.00").x +
+                                     (ImGui::GetStyle().FramePadding.x * 2.0F) +
+                                     (step_button_width * 2.0F);
     const float side_combo_width = ImGui::CalcTextSize("right").x +
                                    (ImGui::GetStyle().FramePadding.x * 2.0F) +
                                    ImGui::GetFrameHeight();
@@ -368,13 +374,16 @@ void App::draw_controls() {
     int side_index = plain.side == ZeroDirectionSide::kLeft ? 0 : 1;
     bool plain_changed = false;
 
+    // Reads as "<degrees> deg <side>" (e.g. "45 deg right"), so the degree
+    // input comes first and the Side dropdown follows it on the same line.
     ImGui::PushID("zero_direction_plain");
     ImGui::TextUnformatted("Zero direction, plain language:");
-    ImGui::SetNextItemWidth(side_combo_width);
-    plain_changed |= ImGui::Combo("Side", &side_index, "left\0right\0\0");
-    zero_direction_focused |= ImGui::IsItemFocused();
     ImGui::SetNextItemWidth(degree_field_width);
     plain_changed |= ImGui::InputFloat("deg of top", &plain.degrees_from_top, 1.0F, 10.0F, "%.2f");
+    zero_direction_focused |= ImGui::IsItemFocused();
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(side_combo_width);
+    plain_changed |= ImGui::Combo("Side", &side_index, "left\0right\0\0");
     zero_direction_focused |= ImGui::IsItemFocused();
     ImGui::PopID();
 
