@@ -1,0 +1,133 @@
+name: Release
+
+# Builds Release binaries for Linux, macOS (Apple Silicon), and Windows, and
+# attaches them to a GitHub Release. Triggered by pushing a version tag
+# (vX.Y.Z) -- workflow_dispatch lets you re-run packaging for an existing tag
+# without re-pushing it (e.g. after fixing this workflow).
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build and release (e.g. v0.1.0)"
+        required: true
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+env:
+  LINUX_X11_DEPS: >-
+    libgl1-mesa-dev libx11-dev libxext-dev libxrandr-dev libxinerama-dev
+    libxcursor-dev libxi-dev libxkbcommon-dev
+  RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-latest
+          - name: macos-arm64
+            os: macos-latest
+          - name: windows-x86_64
+            os: windows-latest
+
+    defaults:
+      run:
+        shell: ${{ matrix.name == 'windows-x86_64' && 'msys2 {0}' || 'bash' }}
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Install toolchain (Linux)
+        if: matrix.name == 'linux-x86_64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang ninja-build cmake $LINUX_X11_DEPS
+
+      - name: Install toolchain (macOS)
+        if: matrix.name == 'macos-arm64'
+        run: brew install ninja
+
+      - name: Install toolchain (Windows / MSYS2 clang64)
+        if: matrix.name == 'windows-x86_64'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: CLANG64
+          update: false
+          install: >-
+            mingw-w64-clang-x86_64-clang
+            mingw-w64-clang-x86_64-cmake
+            mingw-w64-clang-x86_64-ninja
+
+      - name: Configure
+        run: cmake --preset release
+
+      - name: Build
+        run: cmake --build --preset release
+
+      - name: Test
+        run: ctest --preset release
+
+      - name: Check Windows binary has no MSYS2 DLL dependencies
+        if: matrix.name == 'windows-x86_64'
+        # -static (see app/CMakeLists.txt) should leave only standard Windows
+        # system DLLs; fail loudly here rather than ship a .exe that only
+        # runs on machines that happen to have MSYS2 installed.
+        run: |
+          deps=$(llvm-objdump -p build/release/app/polar-plotter.exe | grep "DLL Name" || true)
+          echo "$deps"
+          if echo "$deps" | grep -qi "msys-\|libc++\|libunwind\|libwinpthread"; then
+            echo "::error::polar-plotter.exe still depends on an MSYS2 runtime DLL"
+            exit 1
+          fi
+
+      - name: Package (Linux/macOS)
+        if: matrix.name != 'windows-x86_64'
+        run: |
+          mkdir -p dist
+          cp build/release/app/polar-plotter dist/
+          tar -C dist -czf polar-plotter-${{ matrix.name }}.tar.gz polar-plotter
+
+      - name: Package (Windows)
+        if: matrix.name == 'windows-x86_64'
+        shell: pwsh
+        run: Compress-Archive -Path build/release/app/polar-plotter.exe -DestinationPath polar-plotter-${{ matrix.name }}.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: polar-plotter-${{ matrix.name }}
+          path: polar-plotter-${{ matrix.name }}.*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$RELEASE_TAG" dist/* \
+            --title "$RELEASE_TAG" \
+            --generate-notes
