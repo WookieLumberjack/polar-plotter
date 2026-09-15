@@ -85,25 +85,51 @@ void App::draw_vector_input(const char* label_prefix, VectorInput& input) {
     const std::string real_label = std::string(label_prefix) + ": Re";
     const std::string imag_label = std::string(label_prefix) + ": Im";
 
-    const float half_width = (ImGui::CalcItemWidth() - ImGui::GetStyle().ItemSpacing.x) / 2.0F;
+    const float box_width = (ImGui::CalcItemWidth() - ImGui::GetStyle().ItemSpacing.x) / 2.0F;
+    // ImGui draws each field's label immediately after its box, so a row's
+    // second box would otherwise start at a different x depending on how
+    // wide the first row's label text is (e.g. "Phase" vs "Re"). Reserving a
+    // fixed label column -- the widest of the four labels, which is the same
+    // for Vector A and Vector B since only the single-character prefix
+    // differs -- keeps both columns aligned across all four fields and
+    // across both vectors.
+    const float label_width = std::max(
+        {ImGui::CalcTextSize(amplitude_label.c_str()).x, ImGui::CalcTextSize(phase_label.c_str()).x,
+         ImGui::CalcTextSize(real_label.c_str()).x, ImGui::CalcTextSize(imag_label.c_str()).x});
+    const float inner_spacing = ImGui::GetStyle().ItemInnerSpacing.x;
+    const float col2_x = box_width + inner_spacing + label_width + ImGui::GetStyle().ItemSpacing.x;
 
-    ImGui::SetNextItemWidth(half_width);
+    ImGui::SetNextItemWidth(box_width);
     const bool amp_changed =
-        ImGui::InputFloat(amplitude_label.c_str(), &display.amplitude, 0.0F, 0.0F, "%.3f");
+        ImGui::InputFloat(("##" + amplitude_label).c_str(), &display.amplitude, 0.0F, 0.0F, "%.3f");
     const bool amp_focused = ImGui::IsItemFocused();
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(half_width);
-    const bool phase_changed =
-        ImGui::InputFloat(phase_label.c_str(), &display.phase_deg, 0.0F, 0.0F, "%.2f");
-    const bool phase_focused = ImGui::IsItemFocused();
+    ImGui::SameLine(0.0F, inner_spacing);
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted(amplitude_label.c_str());
 
-    ImGui::SetNextItemWidth(half_width);
+    ImGui::SameLine(col2_x);
+    ImGui::SetNextItemWidth(box_width);
+    const bool phase_changed =
+        ImGui::InputFloat(("##" + phase_label).c_str(), &display.phase_deg, 0.0F, 0.0F, "%.2f");
+    const bool phase_focused = ImGui::IsItemFocused();
+    ImGui::SameLine(0.0F, inner_spacing);
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted(phase_label.c_str());
+
+    ImGui::SetNextItemWidth(box_width);
     const bool real_changed =
-        ImGui::InputFloat(real_label.c_str(), input.xy.data(), 0.0F, 0.0F, "%.3f");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(half_width);
+        ImGui::InputFloat(("##" + real_label).c_str(), input.xy.data(), 0.0F, 0.0F, "%.3f");
+    ImGui::SameLine(0.0F, inner_spacing);
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted(real_label.c_str());
+
+    ImGui::SameLine(col2_x);
+    ImGui::SetNextItemWidth(box_width);
     const bool imag_changed =
-        ImGui::InputFloat(imag_label.c_str(), input.xy.data() + 1, 0.0F, 0.0F, "%.3f");
+        ImGui::InputFloat(("##" + imag_label).c_str(), input.xy.data() + 1, 0.0F, 0.0F, "%.3f");
+    ImGui::SameLine(0.0F, inner_spacing);
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted(imag_label.c_str());
 
     const bool polar_focused_now = amp_focused || phase_focused;
 
@@ -323,7 +349,18 @@ void App::draw_controls() {
     const vecmath::Vec2 a = to_vec(a_.xy);
     const vecmath::Vec2 b = to_vec(b_.xy);
 
-    ImGui::Spacing();
+    // Degree fields only ever hold a signed angle (raw zero-direction can go
+    // negative; degrees-from-top is clamped to [0, 180]), so size their text
+    // box to "-360.00" rather than the panel's default full-width -- and size
+    // the Side combo to its longest option ("right") plus its arrow.
+    const float degree_field_width =
+        ImGui::CalcTextSize("-360.00").x + (ImGui::GetStyle().FramePadding.x * 2.0F);
+    const float side_combo_width = ImGui::CalcTextSize("right").x +
+                                   (ImGui::GetStyle().FramePadding.x * 2.0F) +
+                                   ImGui::GetFrameHeight();
+
+    ImGui::SeparatorText("Zero direction");
+    ImGui::SetNextItemWidth(degree_field_width);
     ImGui::InputFloat("Zero direction (deg)", &zero_direction_deg_, 1.0F, 10.0F, "%.2f");
     bool zero_direction_focused = ImGui::IsItemFocused();
 
@@ -333,8 +370,10 @@ void App::draw_controls() {
 
     ImGui::PushID("zero_direction_plain");
     ImGui::TextUnformatted("Zero direction, plain language:");
+    ImGui::SetNextItemWidth(side_combo_width);
     plain_changed |= ImGui::Combo("Side", &side_index, "left\0right\0\0");
     zero_direction_focused |= ImGui::IsItemFocused();
+    ImGui::SetNextItemWidth(degree_field_width);
     plain_changed |= ImGui::InputFloat("deg of top", &plain.degrees_from_top, 1.0F, 10.0F, "%.2f");
     zero_direction_focused |= ImGui::IsItemFocused();
     ImGui::PopID();
@@ -349,7 +388,7 @@ void App::draw_controls() {
 
     ImGui::Checkbox("Keep zero-direction arc visible", &show_zero_direction_arc_persistent_);
 
-    ImGui::Spacing();
+    ImGui::SeparatorText("Angle convention");
     ImGui::TextUnformatted("Rotation direction");
     ImGui::SameLine();
     const bool rotation_is_ccw =
@@ -370,8 +409,6 @@ void App::draw_controls() {
     ImGui::Checkbox("Show A + B", &show_sum_);
     ImGui::SameLine();
     ImGui::Checkbox("Show A - B", &show_difference_);
-    ImGui::Checkbox("Show tip-to-tail construction", &show_tip_to_tail_);
-    ImGui::Checkbox("Show difference segment", &show_difference_segment_);
     ImGui::Checkbox("Show B - A", &show_difference_ba_);
     ImGui::SameLine();
     ImGui::Checkbox("Show A x B", &show_product_);
@@ -395,6 +432,9 @@ void App::draw_controls() {
     if (!derived_.quotient_ba) {
         show_quotient_ba_ = false;
     }
+
+    ImGui::Checkbox("Show tip-to-tail construction", &show_tip_to_tail_);
+    ImGui::Checkbox("Show difference segment", &show_difference_segment_);
 
     ImGui::Spacing();
     ImGui::TextUnformatted("Tip marker style");
