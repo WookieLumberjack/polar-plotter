@@ -130,6 +130,25 @@ or filter by regex through CTest:
 ctest --preset debug -R <regex>
 ```
 
+## Releases
+
+Pushing a version tag (`vX.Y.Z`) triggers `.github/workflows/release.yml`,
+which builds a Release binary on Linux, macOS, and Windows and attaches them
+to a GitHub Release for that tag:
+
+- **Linux** (`polar-plotter-linux-x86_64.tar.gz`): x86_64, dynamically links
+  the system's OpenGL/X11 (present on any Linux desktop).
+- **macOS** (`polar-plotter-macos-arm64.tar.gz`): Apple Silicon only — GitHub's
+  macOS runners are arm64, so there's no Intel build; build from source on
+  an Intel Mac.
+- **Windows** (`polar-plotter-windows-x86_64.zip`): a single statically
+  linked `.exe` with no MSYS2 runtime DLLs to install alongside it.
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
 ## Architecture
 
 One-way module dependency graph — each module only depends on what's below

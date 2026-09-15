@@ -46,6 +46,12 @@
       "output": { "outputOnFailure": true },
       "execution": { "noTestsAction": "error", "stopOnFailure": false }
     },
+    {
+      "name": "release",
+      "configurePreset": "release",
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error", "stopOnFailure": false }
+    },
     { "name": "asan", "configurePreset": "asan", "output": { "outputOnFailure": true } }
   ]
 }

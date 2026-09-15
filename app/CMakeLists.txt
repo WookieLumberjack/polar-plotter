@@ -24,6 +24,11 @@ if(APPLE)
     target_compile_definitions(polar_plotter_app PRIVATE GL_SILENCE_DEPRECATION)
 elseif(WIN32)
     target_link_libraries(polar_plotter_app PRIVATE opengl32)
+    # Static-link the MSYS2 clang64 runtime (libc++/libunwind/libwinpthread)
+    # so the released .exe has no MSYS2 DLL dependencies -- see the release
+    # workflow, which ships this binary standalone rather than alongside its
+    # runtime DLLs.
+    target_link_options(polar_plotter_app PRIVATE -static)
 else()
     find_package(OpenGL REQUIRED)
     target_link_libraries(polar_plotter_app PRIVATE OpenGL::GL)
