@@ -1,5 +1,7 @@
 add_executable(polar_plotter_app
     main.cpp
+    config_path.cpp
+    font_atlas.cpp
     # Compiled on every platform (see cmake/Dependencies.cmake's
     # Vulkan-Headers/volk section for why); only ever invoked on Windows.
     vulkan_backend.cpp)

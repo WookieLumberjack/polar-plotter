@@ -15,19 +15,20 @@ platform has a reported version of this problem.
 
 The Windows build requires a working Vulkan driver. There is **no runtime
 fallback to OpenGL** if Vulkan initialization fails at startup — see
-`app/vulkan_backend.cpp`'s `run_vulkan_clear_window()`, which prints an
-actionable message to stderr and exits rather than retrying under OpenGL.
-This keeps the Windows code path singular instead of doubling the
-backends (and the test/support surface) on that one platform.
+`app/vulkan_backend.cpp`'s `run_vulkan_app()`, which prints an actionable
+message to stderr and exits rather than retrying under OpenGL. This keeps
+the Windows code path singular instead of doubling the backends (and the
+test/support surface) on that one platform.
 
-This first slice (#99) intentionally stops at a bare Vulkan pipeline that
-presents a solid clear color — instance, physical/logical device,
-swapchain, render pass, framebuffers, command buffers, and sync objects,
-with the swapchain recreated correctly across resize/maximize — with no
-ImGui/ImPlot rendering on top yet. It exists to validate, as cheaply as
-possible, that switching backends actually eliminates the maximize-time
-stall before investing in the larger ImGui-over-Vulkan integration (a
-sibling ticket under #96).
+This started (#99) as a bare Vulkan pipeline that presented a solid clear
+color — instance, physical/logical device, swapchain, render pass,
+framebuffers, command buffers, and sync objects, with the swapchain
+recreated correctly across resize/maximize — with no ImGui/ImPlot rendering
+on top, to validate as cheaply as possible that switching backends actually
+eliminates the maximize-time stall. #100 then wired the full ImGui/ImPlot
+UI (`ui::App`, via `imgui_impl_vulkan` built with
+`IMGUI_IMPL_VULKAN_USE_VOLK`) on top of that same pipeline, so the app now
+renders identically to the OpenGL path, just through a different backend.
 
 ## Rationale
 
