@@ -74,6 +74,14 @@ target_link_libraries(imgui PUBLIC glfw)
 target_compile_features(imgui PUBLIC cxx_std_23)
 add_library(imgui::imgui ALIAS imgui)
 
+# Widen ImDrawIdx to 32-bit (default is 16-bit): ImPlot's docs warn that a
+# draw list needing more than 65,536 indices can silently corrupt rendering
+# with the default width. Set once here, PUBLIC so it propagates identically
+# to every consumer (implot, ui, app) -- required for ABI consistency across
+# every translation unit that touches ImDrawList. See #97.
+target_compile_definitions(imgui PUBLIC
+    IMGUI_USER_CONFIG="${CMAKE_SOURCE_DIR}/cmake/imgui_user_config.h")
+
 # Vendored code: not our warning policy.
 if(NOT MSVC)
     target_compile_options(imgui PRIVATE -w)
