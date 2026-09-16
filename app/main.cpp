@@ -16,8 +16,6 @@ int main() { return app::run_vulkan_app(); }
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
-#include <filesystem>
-#include <fstream>
 #include <vector>
 
 // Only core GL 1.1 entry points (glViewport/glClear/...) are used directly here;
@@ -37,6 +35,7 @@ int main() { return app::run_vulkan_app(); }
 
 #include "config_path.hpp"
 #include "font_atlas.hpp"
+#include "ppm_writer.hpp"
 #include "ui/app.hpp"
 
 namespace {
@@ -59,19 +58,6 @@ void glfw_content_scale_callback(GLFWwindow* window, float xscale, float /*yscal
     if (ui_app != nullptr) {
         ui_app->set_content_scale(xscale);
     }
-}
-
-// Write an RGB framebuffer (top-down) as a binary PPM (P6). Chosen for zero
-// dependencies; convert to PNG with e.g. `magick shot.ppm shot.png`.
-bool write_ppm(const std::filesystem::path& path, int width, int height,
-               const std::vector<std::uint8_t>& rgb) {
-    std::ofstream out(path, std::ios::binary);
-    if (!out) {
-        return false;
-    }
-    out << "P6\n" << width << ' ' << height << "\n255\n";
-    out.write(reinterpret_cast<const char*>(rgb.data()), static_cast<std::streamsize>(rgb.size()));
-    return out.good();
 }
 
 // Read the GL back buffer into a top-down RGB buffer.
@@ -210,8 +196,8 @@ int main() {
             // grab the framebuffer and quit.
             if (screenshot_mode && ++frame >= 8) {
                 glFinish();
-                if (!write_ppm(shot_path, display_w, display_h,
-                               read_framebuffer(display_w, display_h))) {
+                if (!app::write_ppm(shot_path, display_w, display_h,
+                                    read_framebuffer(display_w, display_h))) {
                     std::fprintf(stderr, "failed to write screenshot to %s\n", shot_path);
                     return EXIT_FAILURE;
                 }

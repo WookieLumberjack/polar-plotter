@@ -32,6 +32,7 @@
 
 #include "config_path.hpp"
 #include "font_atlas.hpp"
+#include "ppm_writer.hpp"
 #include "ui/app.hpp"
 
 namespace app {
@@ -184,7 +185,11 @@ VkExtent2D choose_extent(GLFWwindow* window, const VkSurfaceCapabilitiesKHR& cap
 // obvious.
 class VulkanApp {
 public:
-    explicit VulkanApp(GLFWwindow* window) : window_(window) {}
+    // \p screenshot_path mirrors main.cpp's non-Windows POLAR_PLOTTER_SCREENSHOT
+    // handling: null means normal interactive operation; non-null names the
+    // PPM path to capture to after a few frames, then exit (see run()).
+    VulkanApp(GLFWwindow* window, const char* screenshot_path)
+        : window_(window), screenshot_path_(screenshot_path) {}
 
     VulkanApp(const VulkanApp&) = delete;
     VulkanApp& operator=(const VulkanApp&) = delete;
@@ -200,7 +205,11 @@ public:
                create_sync_objects() && create_descriptor_pool() && init_imgui();
     }
 
-    void run() {
+    // Returns an exit code suitable for returning from run_vulkan_app():
+    // EXIT_SUCCESS for normal interactive operation (window closed by the
+    // user) or a completed screenshot capture, EXIT_FAILURE if
+    // screenshot_path_ was set and the capture failed.
+    [[nodiscard]] int run() {
         glfwSetWindowUserPointer(window_, this);
         glfwSetFramebufferSizeCallback(window_, [](GLFWwindow* win, int /*width*/, int /*height*/) {
             auto* self = static_cast<VulkanApp*>(glfwGetWindowUserPointer(win));
@@ -223,6 +232,14 @@ public:
         // default (unscaled) content_scale_ of 1.0.
         ui_app.set_content_scale(content_scale_);
         ui_app_ = &ui_app;
+
+        // Same env-var-driven contract as the non-Windows path (see
+        // main.cpp's screenshot_mode): render a few frames off-screen (the
+        // window itself was created hidden -- see run_vulkan_app()), then
+        // capture and exit, instead of running interactively forever.
+        const bool screenshot_mode = screenshot_path_ != nullptr;
+        int frame = 0;
+        int exit_code = EXIT_SUCCESS;
 
         while (glfwWindowShouldClose(window_) == GLFW_FALSE) {
             glfwPollEvents();
@@ -247,10 +264,22 @@ public:
 
             ImGui::Render();
             draw_frame(ImGui::GetDrawData());
+
+            // Let ImGui settle (it lays out some widgets over two frames),
+            // then grab the swapchain image and quit -- matching the
+            // OpenGL path's frame-count-then-exit contract exactly (see
+            // main.cpp's identical `++frame >= 8` check).
+            if (screenshot_mode && ++frame >= 8) {
+                if (!capture_screenshot()) {
+                    exit_code = EXIT_FAILURE;
+                }
+                break;
+            }
         }
 
         vkDeviceWaitIdle(device_);
         ui_app_ = nullptr;
+        return exit_code;
     }  // ui_app.save() runs here
 
 private:
@@ -525,7 +554,13 @@ private:
         create_info.imageColorSpace = surface_format.colorSpace;
         create_info.imageExtent = extent;
         create_info.imageArrayLayers = 1;
-        create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        // TRANSFER_SRC in addition to the color-attachment usage every frame
+        // needs: POLAR_PLOTTER_SCREENSHOT's capture path (see
+        // capture_screenshot()) copies the swapchain image straight to a
+        // host-visible staging buffer via vkCmdCopyImageToBuffer, which
+        // requires the image to have been created with this usage bit.
+        create_info.imageUsage =
+            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 
         const std::array<std::uint32_t, 2> queue_indices = {graphics_family_, present_family_};
         if (graphics_family_ != present_family_) {
@@ -829,6 +864,196 @@ private:
         vkEndCommandBuffer(command_buffer);
     }
 
+    // Vulkan equivalent of main.cpp's non-Windows read_framebuffer()+write_ppm
+    // capture: copies the most recently presented swapchain image
+    // (swapchain_images_[last_image_index_], already in
+    // VK_IMAGE_LAYOUT_PRESENT_SRC_KHR thanks to the render pass's
+    // finalLayout) to a host-visible/coherent staging buffer via
+    // vkCmdCopyImageToBuffer, maps it, converts to the same top-down,
+    // 3-byte-per-pixel RGB layout the OpenGL path produces (dropping alpha
+    // and swapping channel order if the swapchain format is BGRA), and
+    // writes it out with the same shared app::write_ppm the OpenGL path
+    // uses -- so POLAR_PLOTTER_SCREENSHOT's output is byte-for-byte
+    // indistinguishable across backends. Unlike the OpenGL framebuffer (which
+    // is bottom-up and needs a vertical flip), a Vulkan swapchain image's row
+    // 0 is already the top row, so no flip is needed here.
+    [[nodiscard]] bool capture_screenshot() const {
+        // Everything in flight must be finished and the presented image's
+        // contents finalized before we read it back.
+        vkDeviceWaitIdle(device_);
+
+        const std::uint32_t width = swapchain_extent_.width;
+        const std::uint32_t height = swapchain_extent_.height;
+        const auto buffer_size =
+            static_cast<VkDeviceSize>(width) * static_cast<VkDeviceSize>(height) * 4;
+
+        VkBufferCreateInfo buffer_info{};
+        buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        buffer_info.size = buffer_size;
+        buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        VkBuffer staging_buffer = VK_NULL_HANDLE;
+        if (vkCreateBuffer(device_, &buffer_info, nullptr, &staging_buffer) != VK_SUCCESS) {
+            std::fprintf(stderr, "failed to write screenshot to %s\n", screenshot_path_);
+            return false;
+        }
+
+        VkMemoryRequirements mem_requirements{};
+        vkGetBufferMemoryRequirements(device_, staging_buffer, &mem_requirements);
+
+        VkPhysicalDeviceMemoryProperties mem_properties{};
+        vkGetPhysicalDeviceMemoryProperties(physical_device_, &mem_properties);
+
+        constexpr VkMemoryPropertyFlags kWanted =
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        std::uint32_t memory_type_index = std::numeric_limits<std::uint32_t>::max();
+        for (std::uint32_t i = 0; i < mem_properties.memoryTypeCount; ++i) {
+            const bool type_ok = (mem_requirements.memoryTypeBits & (1U << i)) != 0U;
+            const bool props_ok =
+                (mem_properties.memoryTypes[i].propertyFlags & kWanted) == kWanted;
+            if (type_ok && props_ok) {
+                memory_type_index = i;
+                break;
+            }
+        }
+        if (memory_type_index == std::numeric_limits<std::uint32_t>::max()) {
+            vkDestroyBuffer(device_, staging_buffer, nullptr);
+            std::fprintf(stderr, "failed to write screenshot to %s\n", screenshot_path_);
+            return false;
+        }
+
+        VkMemoryAllocateInfo alloc_info{};
+        alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        alloc_info.allocationSize = mem_requirements.size;
+        alloc_info.memoryTypeIndex = memory_type_index;
+
+        VkDeviceMemory staging_memory = VK_NULL_HANDLE;
+        if (vkAllocateMemory(device_, &alloc_info, nullptr, &staging_memory) != VK_SUCCESS) {
+            vkDestroyBuffer(device_, staging_buffer, nullptr);
+            std::fprintf(stderr, "failed to write screenshot to %s\n", screenshot_path_);
+            return false;
+        }
+        vkBindBufferMemory(device_, staging_buffer, staging_memory, 0);
+
+        VkCommandBufferAllocateInfo cmd_alloc_info{};
+        cmd_alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        cmd_alloc_info.commandPool = command_pool_;
+        cmd_alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        cmd_alloc_info.commandBufferCount = 1;
+
+        VkCommandBuffer cmd = VK_NULL_HANDLE;
+        if (vkAllocateCommandBuffers(device_, &cmd_alloc_info, &cmd) != VK_SUCCESS) {
+            vkDestroyBuffer(device_, staging_buffer, nullptr);
+            vkFreeMemory(device_, staging_memory, nullptr);
+            std::fprintf(stderr, "failed to write screenshot to %s\n", screenshot_path_);
+            return false;
+        }
+
+        VkCommandBufferBeginInfo begin_info{};
+        begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        vkBeginCommandBuffer(cmd, &begin_info);
+
+        // The image is already idle (we just waited above) and its layout
+        // is PRESENT_SRC_KHR from the render pass's finalLayout; move it to
+        // TRANSFER_SRC_OPTIMAL for the copy below. TOP_OF_PIPE->TRANSFER is
+        // sufficient since vkDeviceWaitIdle above already established a full
+        // execution barrier.
+        VkImageMemoryBarrier to_transfer_src{};
+        to_transfer_src.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        to_transfer_src.srcAccessMask = 0;
+        to_transfer_src.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        to_transfer_src.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        to_transfer_src.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        to_transfer_src.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        to_transfer_src.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        to_transfer_src.image = swapchain_images_[last_image_index_];
+        to_transfer_src.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             0, 0, nullptr, 0, nullptr, 1, &to_transfer_src);
+
+        VkBufferImageCopy region{};
+        region.bufferOffset = 0;
+        // 0/0 mean tightly packed (no row padding), matching the tightly
+        // packed RGB buffer app::write_ppm expects.
+        region.bufferRowLength = 0;
+        region.bufferImageHeight = 0;
+        region.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+        region.imageOffset = {0, 0, 0};
+        region.imageExtent = {width, height, 1};
+
+        vkCmdCopyImageToBuffer(cmd, swapchain_images_[last_image_index_],
+                               VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, staging_buffer, 1, &region);
+
+        vkEndCommandBuffer(cmd);
+
+        VkSubmitInfo submit_info{};
+        submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submit_info.commandBufferCount = 1;
+        submit_info.pCommandBuffers = &cmd;
+
+        bool ok = true;
+        if (vkQueueSubmit(graphics_queue_, 1, &submit_info, VK_NULL_HANDLE) != VK_SUCCESS) {
+            ok = false;
+        } else {
+            vkQueueWaitIdle(graphics_queue_);
+        }
+        vkFreeCommandBuffers(device_, command_pool_, 1, &cmd);
+
+        if (!ok) {
+            vkDestroyBuffer(device_, staging_buffer, nullptr);
+            vkFreeMemory(device_, staging_memory, nullptr);
+            std::fprintf(stderr, "failed to write screenshot to %s\n", screenshot_path_);
+            return false;
+        }
+
+        // vkMapMemory's out-parameter must be a plain (non-const) void*; cast
+        // to const immediately afterward since nothing here ever writes
+        // through it, satisfying misc-const-correctness cleanly instead of
+        // fighting the Vulkan API's own signature.
+        void* mapped_raw = nullptr;  // NOLINT(misc-const-correctness) -- vkMapMemory's
+                                     // void** out-param requires a non-const pointee.
+        vkMapMemory(device_, staging_memory, 0, buffer_size, 0, &mapped_raw);
+        const void* mapped = mapped_raw;
+
+        // Match choose_surface_format()'s preference: VK_FORMAT_B8G8R8A8_SRGB
+        // stores channels as B,G,R,A in memory. Any other format this
+        // (non-exhaustive) fallback might pick is assumed R,G,B,A -- true of
+        // every other commonly-exposed 8-bit UNORM/SRGB surface format.
+        const bool bgr_order = swapchain_format_ == VK_FORMAT_B8G8R8A8_SRGB ||
+                               swapchain_format_ == VK_FORMAT_B8G8R8A8_UNORM;
+
+        const auto* pixels = static_cast<const std::uint8_t*>(mapped);
+        const auto pixel_count = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+        std::vector<std::uint8_t> rgb(pixel_count * 3);
+        for (std::size_t i = 0; i < pixel_count; ++i) {
+            const std::uint8_t* src = pixels + (i * 4);
+            std::uint8_t* dst = rgb.data() + (i * 3);
+            if (bgr_order) {
+                dst[0] = src[2];
+                dst[1] = src[1];
+                dst[2] = src[0];
+            } else {
+                dst[0] = src[0];
+                dst[1] = src[1];
+                dst[2] = src[2];
+            }
+        }
+
+        vkUnmapMemory(device_, staging_memory);
+        vkDestroyBuffer(device_, staging_buffer, nullptr);
+        vkFreeMemory(device_, staging_memory, nullptr);
+
+        if (!write_ppm(screenshot_path_, static_cast<int>(width), static_cast<int>(height), rgb)) {
+            std::fprintf(stderr, "failed to write screenshot to %s\n", screenshot_path_);
+            return false;
+        }
+        std::fprintf(stderr, "wrote %ux%u screenshot to %s\n", width, height, screenshot_path_);
+        return true;
+    }
+
     void draw_frame(ImDrawData* draw_data) {
         vkWaitForFences(device_, 1, &in_flight_fences_[current_frame_], VK_TRUE,
                         std::numeric_limits<std::uint64_t>::max());
@@ -846,6 +1071,7 @@ private:
             return;
         }
 
+        last_image_index_ = image_index;
         vkResetFences(device_, 1, &in_flight_fences_[current_frame_]);
 
         VkCommandBuffer command_buffer = command_buffers_[current_frame_];
@@ -923,6 +1149,10 @@ private:
     std::vector<VkSemaphore> render_finished_semaphores_;
     std::vector<VkFence> in_flight_fences_;
     std::size_t current_frame_ = 0;
+    // Index into swapchain_images_ last returned by vkAcquireNextImageKHR,
+    // used by capture_screenshot() to know which swapchain image to read
+    // back from.
+    std::uint32_t last_image_index_ = 0;
     bool framebuffer_resized_ = false;
 
     VkDescriptorPool descriptor_pool_ = VK_NULL_HANDLE;
@@ -932,9 +1162,20 @@ private:
     // on_content_scale_changed's doc comment) -- ui:: never depends on GLFW
     // itself, so this is how the content-scale callback below reaches it.
     ui::App* ui_app_ = nullptr;
+    // POLAR_PLOTTER_SCREENSHOT's target path, or nullptr for normal
+    // interactive operation -- see the constructor and run()'s doc comment.
+    const char* screenshot_path_ = nullptr;
 };
 
 int run_vulkan_app() {
+    // Same env-var contract as the non-Windows path (see main.cpp): when
+    // set, render a few frames off-screen, dump the current swapchain image
+    // to this path as a PPM, and exit. Lets CI / a headless box produce a
+    // screenshot without a display server or window manager, exactly like
+    // the OpenGL path does on Linux/macOS.
+    const char* shot_path = std::getenv("POLAR_PLOTTER_SCREENSHOT");
+    const bool screenshot_mode = shot_path != nullptr;
+
     glfwSetErrorCallback(glfw_error_callback);
     if (glfwInit() == GLFW_FALSE) {
         std::fprintf(stderr, "Failed to initialize GLFW.\n");
@@ -967,6 +1208,9 @@ int run_vulkan_app() {
     // than leaving it at its requested logical size -- must be set before
     // window creation.
     glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE);
+    if (screenshot_mode) {
+        glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+    }
     GLFWwindow* window =
         glfwCreateWindow(kInitialWidth, kInitialHeight, "polar-plotter", nullptr, nullptr);
     if (window == nullptr) {
@@ -977,14 +1221,14 @@ int run_vulkan_app() {
 
     int exit_code = EXIT_SUCCESS;
     {
-        VulkanApp vulkan(window);
+        VulkanApp vulkan(window, shot_path);
         if (!vulkan.init()) {
             // vulkan.init() has already printed an actionable message for
             // whichever step failed; no silent fallback to OpenGL (hard
             // cutover, see docs/adr/0004-windows-vulkan-hard-cutover.md).
             exit_code = EXIT_FAILURE;
         } else {
-            vulkan.run();
+            exit_code = vulkan.run();
         }
     }  // ~VulkanApp tears down whatever it managed to create.
 

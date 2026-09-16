@@ -110,6 +110,12 @@ Convert the PPM to a viewable format with ImageMagick:
 magick out.ppm out.png
 ```
 
+On Windows, the same env var produces the same PPM output via a Vulkan
+swapchain-image readback instead of `glReadPixels` (see
+`app/vulkan_backend.cpp` and `docs/adr/0004-windows-vulkan-hard-cutover.md`)
+-- the env var, output format, and frame-count-then-exit behavior are
+identical across both backends.
+
 ## Testing
 
 Run the Catch2 test suite via CTest:
