@@ -155,6 +155,14 @@ ThemeStyle theme_style(Theme theme) {
     return slate_style();
 }
 
+ThemeStyle scale_theme_style(const ThemeStyle& style, float content_scale) {
+    ThemeStyle scaled = style;
+    scaled.window_rounding *= content_scale;
+    scaled.frame_rounding *= content_scale;
+    scaled.grab_rounding *= content_scale;
+    return scaled;
+}
+
 void apply_theme(const ThemeStyle& style) {
     ImGuiStyle& s = ImGui::GetStyle();
     s.WindowRounding = style.window_rounding;

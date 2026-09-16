@@ -243,7 +243,14 @@ void App::save() const {
     (void)save_config(config_path_, cfg);
 }
 
-void App::apply_current_theme() const { apply_theme(theme_style(theme_)); }
+void App::apply_current_theme() const {
+    apply_theme(scale_theme_style(theme_style(theme_), content_scale_));
+}
+
+void App::set_content_scale(float content_scale) {
+    content_scale_ = content_scale;
+    apply_current_theme();
+}
 
 void App::draw_dockspace_host() {
     const ImGuiViewport* vp = ImGui::GetMainViewport();
