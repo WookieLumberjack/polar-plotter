@@ -1,8 +1,7 @@
-// Desktop host. On Windows this stands up a bare Vulkan clear-color window
-// (see vulkan_backend.hpp/.cpp and #99/#96) instead of the OpenGL/ImGui path
-// below -- a validation spike for whether switching Windows off OpenGL fixes
-// the maximize-time stall described in #96, before a sibling ticket wires
-// ImGui rendering on top of the same Vulkan pipeline. Linux and macOS are
+// Desktop host. On Windows this runs the full ui::App UI through a Vulkan
+// rendering pipeline (see vulkan_backend.hpp/.cpp and #99/#100/#96) instead
+// of the OpenGL/ImGui path below -- the OpenGL backend stalls while the
+// window is maximized on Windows 11 (see docs/adr/0004). Linux and macOS are
 // untouched: they still create a GLFW window + OpenGL3 context, wire up Dear
 // ImGui and ImPlot, and run ui::App once per frame, exactly as before.
 
@@ -10,7 +9,7 @@
 
 #include "vulkan_backend.hpp"
 
-int main() { return app::run_vulkan_clear_window(); }
+int main() { return app::run_vulkan_app(); }
 
 #else
 
@@ -36,53 +35,29 @@ int main() { return app::run_vulkan_clear_window(); }
 #include <imgui_impl_opengl3.h>
 #include <implot.h>
 
-#include "jetbrains_mono_medium.h"
+#include "config_path.hpp"
+#include "font_atlas.hpp"
 #include "ui/app.hpp"
 
 namespace {
 
-// Base (100%-scale) size for the app's one and only font, chosen for this
-// app's widget density (compact input rows, plot labels, tables) at the
-// default window size. No font-size UI: see #60. The font atlas is always
-// actually built at kFontSizePixels * content_scale (see rebuild_font_atlas)
-// so text stays crisp on a scaled display instead of being blurrily
-// upscaled from this base size.
-constexpr float kFontSizePixels = 18.0F;
-
 void glfw_error_callback(int error, const char* description) {
     std::fprintf(stderr, "GLFW error %d: %s\n", error, description);
-}
-
-// Clear and rebuild the font atlas with the embedded JetBrains Mono font at
-// kFontSizePixels * content_scale, so the rendered glyphs are natively that
-// size rather than a linear stretch of some other fixed size (which would
-// look blurry on a scaled display -- see CONTEXT.md's "content scale"
-// entry). Rebuilding marks the atlas's ImTextureData for re-upload; Dear
-// ImGui's OpenGL3 backend re-uploads any texture flagged this way itself,
-// from ImGui::Render()'s draw data, the next time it runs -- no explicit
-// destroy/create GPU call needed here.
-void rebuild_font_atlas(float content_scale) {
-    ImGuiIO& io = ImGui::GetIO();
-    io.Fonts->Clear();
-    io.Fonts->AddFontFromMemoryCompressedTTF(JetBrainsMonoMedium_compressed_data,
-                                             JetBrainsMonoMedium_compressed_size,
-                                             kFontSizePixels * content_scale);
-    io.Fonts->Build();
 }
 
 // GLFWwindowcontentscalefun: fires on startup's first PollEvents and again
 // whenever the window moves to a monitor with a different content scale
 // (e.g. dragged from a 100% to a 150% display). Rebuilds the font atlas at
 // the new effective pixel size (re-uploaded to the GPU automatically -- see
-// rebuild_font_atlas), then re-derives ui::App's style from scratch for the
-// new scale -- see ui::App::apply_current_theme's doc comment for why that
-// composition can't just scale ImGuiStyle in place.
+// app::rebuild_font_atlas), then re-derives ui::App's style from scratch for
+// the new scale -- see ui::App::apply_current_theme's doc comment for why
+// that composition can't just scale ImGuiStyle in place.
 void glfw_content_scale_callback(GLFWwindow* window, float xscale, float /*yscale*/) {
-    rebuild_font_atlas(xscale);
+    app::rebuild_font_atlas(xscale);
 
-    auto* app = static_cast<ui::App*>(glfwGetWindowUserPointer(window));
-    if (app != nullptr) {
-        app->set_content_scale(xscale);
+    auto* ui_app = static_cast<ui::App*>(glfwGetWindowUserPointer(window));
+    if (ui_app != nullptr) {
+        ui_app->set_content_scale(xscale);
     }
 }
 
@@ -118,16 +93,6 @@ std::vector<std::uint8_t> read_framebuffer(int width, int height) {
         }
     }
     return rgb;
-}
-
-std::filesystem::path config_path() {
-    if (const char* xdg = std::getenv("XDG_CONFIG_HOME")) {
-        return std::filesystem::path(xdg) / "polar-plotter" / "inputs.conf";
-    }
-    if (const char* home = std::getenv("HOME")) {
-        return std::filesystem::path(home) / ".config" / "polar-plotter" / "inputs.conf";
-    }
-    return {"polar-plotter.conf"};
 }
 
 }  // namespace
@@ -197,15 +162,16 @@ int main() {
     // over the fetched TTF, see cmake/Dependencies.cmake) -- no
     // AddFontFromFileTTF / runtime file path loading. This is the app's
     // default and only font (#60), built at the window's actual content
-    // scale from the start (see rebuild_font_atlas) rather than a fixed size
-    // ImGui_ImplOpenGL3_Init would otherwise upload once and never revisit.
-    rebuild_font_atlas(content_scale);
+    // scale from the start (see app::rebuild_font_atlas) rather than a fixed
+    // size ImGui_ImplOpenGL3_Init would otherwise upload once and never
+    // revisit.
+    app::rebuild_font_atlas(content_scale);
 
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glsl_version);
 
     {
-        ui::App app(config_path());
+        ui::App app(app::config_path());
         // See ui::App::set_content_scale's doc comment: this both records
         // the scale read above and re-derives the theme's style for it,
         // since the constructor above applied the theme at the default

@@ -3,15 +3,15 @@
 
 namespace app {
 
-// Windows-only Vulkan validation spike (#99, part of #96): stands up a full
-// Vulkan pipeline (instance, physical/logical device, swapchain, render
-// pass, framebuffers, command buffers, sync objects) via GLFW's Vulkan
-// window-surface support, and presents nothing but a solid clear color,
-// recreating the swapchain correctly across resize/maximize. This exists to
-// confirm or refute -- as cheaply as possible -- whether swapping the
-// Windows rendering backend away from OpenGL eliminates the maximize-time
-// stall described in #96, before the sibling ticket invests in the full
-// ImGui-over-Vulkan integration on top of this same pipeline.
+// Windows-only Vulkan-backed application host (#100, building on #99's
+// clear-color spike, part of #96): stands up a full Vulkan pipeline
+// (instance, physical/logical device, swapchain, render pass, framebuffers,
+// command buffers, sync objects, and the descriptor pool Dear ImGui's Vulkan
+// backend requires) via GLFW's Vulkan window-surface support, then runs the
+// real application -- ui::App, ImGui, ImPlot -- through it every frame,
+// recreating the swapchain correctly across resize/maximize. This replaces
+// the earlier bare-clear-color spike now that #99 has confirmed switching
+// Windows off OpenGL avoids the maximize-time stall described in #96.
 //
 // This is a hard cutover with no OpenGL fallback: see
 // docs/adr/0004-windows-vulkan-hard-cutover.md. If Vulkan initialization
@@ -24,11 +24,12 @@ namespace app {
 // translation unit is nonetheless compiled on every platform (see
 // app/CMakeLists.txt) purely so it's covered by this project's
 // clang-format/clang-tidy checks and by a real -Wall -Wextra -Wpedantic
-// -Wconversion -Werror Clang compile against the real Vulkan-Headers/volk
-// types -- it is simply never invoked outside Windows.
+// -Wconversion -Werror Clang compile against the real Vulkan-Headers/volk/
+// Dear ImGui Vulkan backend types -- it is simply never invoked outside
+// Windows.
 //
 // Returns an exit code suitable for returning directly from main().
-int run_vulkan_clear_window();
+int run_vulkan_app();
 
 }  // namespace app
 

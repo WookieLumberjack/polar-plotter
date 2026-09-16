@@ -21,6 +21,18 @@
 #include <vector>
 
 #include <GLFW/glfw3.h>
+#include <imgui.h>
+#include <imgui_impl_glfw.h>
+// Built with IMGUI_IMPL_VULKAN_USE_VOLK defined PUBLICly on the `imgui`
+// CMake target (see cmake/Dependencies.cmake), the same pairing Dear ImGui's
+// own example_glfw_vulkan uses -- this header then includes <volk.h> itself
+// (already included above) instead of <vulkan/vulkan.h>.
+#include <imgui_impl_vulkan.h>
+#include <implot.h>
+
+#include "config_path.hpp"
+#include "font_atlas.hpp"
+#include "ui/app.hpp"
 
 namespace app {
 
@@ -31,12 +43,30 @@ constexpr int kInitialHeight = 800;
 constexpr std::uint32_t kFramesInFlight = 2;
 
 // Matches the OpenGL path's clear color (see the non-Windows branch of
-// main.cpp) so the two backends are visually equivalent while this spike is
-// the only thing Windows renders.
+// main.cpp) so the two backends are visually equivalent -- this is the
+// render pass's VK_ATTACHMENT_LOAD_OP_CLEAR color, painted under the ImGui
+// UI every frame exactly like glClearColor+glClear does on the OpenGL path.
 constexpr VkClearColorValue kClearColor = {{0.10F, 0.11F, 0.13F, 1.0F}};
 
 void glfw_error_callback(int error, const char* description) {
     std::fprintf(stderr, "GLFW error %d: %s\n", error, description);
+}
+
+// Passed to ImGui_ImplVulkan_InitInfo::CheckVkResultFn: Dear ImGui's Vulkan
+// backend calls this after Vulkan calls it makes internally (pipeline/
+// descriptor/texture creation). A negative VkResult here indicates a real
+// Vulkan error rather than e.g. VK_SUBOPTIMAL_KHR, so abort rather than
+// continue with a backend left in an unknown state -- matching Dear ImGui's
+// own example_glfw_vulkan's check_vk_result.
+void check_vk_result(VkResult result) {
+    if (result == VK_SUCCESS) {
+        return;
+    }
+    std::fprintf(stderr, "[vulkan] Dear ImGui Vulkan backend error: VkResult %d\n",
+                 static_cast<int>(result));
+    if (result < 0) {
+        std::abort();
+    }
 }
 
 struct QueueFamilyIndices {
@@ -144,49 +174,112 @@ VkExtent2D choose_extent(GLFWwindow* window, const VkSurfaceCapabilitiesKHR& cap
 
 }  // namespace
 
-// Owns the full Vulkan pipeline for the clear-color spike: instance,
-// surface, physical/logical device, swapchain, render pass, framebuffers,
-// command buffers, and sync objects. `init()` reports failure (with an
-// actionable stderr message at the point of failure) instead of throwing --
-// there is no fallback path to unwind to, so a plain bool keeps the failure
-// handling in `run_vulkan_clear_window()` linear and obvious.
-class VulkanClearWindow {
+// Owns the full Vulkan pipeline plus the Dear ImGui Vulkan backend on top of
+// it: instance, surface, physical/logical device, swapchain, render pass,
+// framebuffers, command buffers, sync objects, the descriptor pool
+// imgui_impl_vulkan requires, and the ui::App instance itself. `init()`
+// reports failure (with an actionable stderr message at the point of
+// failure) instead of throwing -- there is no fallback path to unwind to, so
+// a plain bool keeps the failure handling in `run_vulkan_app()` linear and
+// obvious.
+class VulkanApp {
 public:
-    explicit VulkanClearWindow(GLFWwindow* window) : window_(window) {}
+    explicit VulkanApp(GLFWwindow* window) : window_(window) {}
 
-    VulkanClearWindow(const VulkanClearWindow&) = delete;
-    VulkanClearWindow& operator=(const VulkanClearWindow&) = delete;
-    VulkanClearWindow(VulkanClearWindow&&) = delete;
-    VulkanClearWindow& operator=(VulkanClearWindow&&) = delete;
+    VulkanApp(const VulkanApp&) = delete;
+    VulkanApp& operator=(const VulkanApp&) = delete;
+    VulkanApp(VulkanApp&&) = delete;
+    VulkanApp& operator=(VulkanApp&&) = delete;
 
-    ~VulkanClearWindow() { cleanup(); }
+    ~VulkanApp() { cleanup(); }
 
     [[nodiscard]] bool init() {
         return create_instance() && create_surface() && pick_physical_device() &&
                create_logical_device() && create_swapchain() && create_image_views() &&
                create_render_pass() && create_framebuffers() && create_command_pool_and_buffers() &&
-               create_sync_objects();
+               create_sync_objects() && create_descriptor_pool() && init_imgui();
     }
 
     void run() {
         glfwSetWindowUserPointer(window_, this);
         glfwSetFramebufferSizeCallback(window_, [](GLFWwindow* win, int /*width*/, int /*height*/) {
-            auto* self = static_cast<VulkanClearWindow*>(glfwGetWindowUserPointer(win));
+            auto* self = static_cast<VulkanApp*>(glfwGetWindowUserPointer(win));
             self->framebuffer_resized_ = true;
         });
+        // Same cross-platform DPI/content-scale handling as the non-Windows
+        // path (see main.cpp's glfw_content_scale_callback and CONTEXT.md's
+        // "content scale" entry): react to the window moving to a monitor
+        // with a different content scale at runtime, not just at startup.
+        glfwSetWindowContentScaleCallback(
+            window_, [](GLFWwindow* win, float xscale, float /*yscale*/) {
+                auto* self = static_cast<VulkanApp*>(glfwGetWindowUserPointer(win));
+                self->on_content_scale_changed(xscale);
+            });
+
+        ui::App ui_app(config_path());
+        // See ui::App::set_content_scale's doc comment: this both records
+        // the scale read in init_imgui() and re-derives the theme's style
+        // for it, since the constructor above applied the theme at the
+        // default (unscaled) content_scale_ of 1.0.
+        ui_app.set_content_scale(content_scale_);
+        ui_app_ = &ui_app;
 
         while (glfwWindowShouldClose(window_) == GLFW_FALSE) {
             glfwPollEvents();
-            draw_frame();
+
+            // Skip drawing while minimized: the framebuffer is 0x0, which
+            // create_swapchain()/recreate_swapchain() already handle by
+            // blocking on glfwWaitEvents() rather than accepting a 0x0
+            // extent -- avoid re-entering that block on every iteration by
+            // simply not drawing until the window is restored.
+            if (glfwGetWindowAttrib(window_, GLFW_ICONIFIED) != 0) {
+                continue;
+            }
+
+            ImGui_ImplVulkan_NewFrame();
+            ImGui_ImplGlfw_NewFrame();
+            ImGui::NewFrame();
+
+            ui_app.render();
+            if (ui_app.want_exit()) {
+                glfwSetWindowShouldClose(window_, GLFW_TRUE);
+            }
+
+            ImGui::Render();
+            draw_frame(ImGui::GetDrawData());
         }
 
         vkDeviceWaitIdle(device_);
-    }
+        ui_app_ = nullptr;
+    }  // ui_app.save() runs here
 
 private:
+    // Rebuilds the font atlas at the new effective pixel size (re-uploaded
+    // to the GPU automatically -- see app::rebuild_font_atlas), then
+    // re-derives ui::App's style from scratch for the new scale, exactly
+    // like the non-Windows path's glfw_content_scale_callback.
+    void on_content_scale_changed(float xscale) {
+        content_scale_ = xscale;
+        rebuild_font_atlas(xscale);
+        if (ui_app_ != nullptr) {
+            ui_app_->set_content_scale(xscale);
+        }
+    }
+
     void cleanup() {
         if (device_ != VK_NULL_HANDLE) {
             vkDeviceWaitIdle(device_);
+        }
+
+        if (imgui_vulkan_initialized_) {
+            ImGui_ImplVulkan_Shutdown();
+            ImGui_ImplGlfw_Shutdown();
+            ImPlot::DestroyContext();
+            ImGui::DestroyContext();
+        }
+
+        if (descriptor_pool_ != VK_NULL_HANDLE) {
+            vkDestroyDescriptorPool(device_, descriptor_pool_, nullptr);
         }
 
         for (auto& sem : image_available_semaphores_) {
@@ -614,13 +707,106 @@ private:
         return true;
     }
 
+    // Dear ImGui's Vulkan backend needs its own VkDescriptorPool (for the
+    // font atlas's combined image sampler, plus any future ImGui_ImplVulkan_
+    // AddTexture() call) -- sized per imgui_impl_vulkan.h's documented
+    // minimums, matching Dear ImGui's own example_glfw_vulkan. Owned and
+    // destroyed by this class, not by the ImGui backend, since it's supplied
+    // via InitInfo::DescriptorPool rather than the InitInfo::
+    // DescriptorPoolSize convenience path (see imgui_impl_vulkan.h).
+    [[nodiscard]] bool create_descriptor_pool() {
+        const std::array<VkDescriptorPoolSize, 2> pool_sizes = {{
+            {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, IMGUI_IMPL_VULKAN_MINIMUM_SAMPLED_IMAGE_POOL_SIZE},
+            {VK_DESCRIPTOR_TYPE_SAMPLER, IMGUI_IMPL_VULKAN_MINIMUM_SAMPLER_POOL_SIZE},
+        }};
+
+        VkDescriptorPoolCreateInfo pool_info{};
+        pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+        pool_info.maxSets = 0;
+        for (const VkDescriptorPoolSize& size : pool_sizes) {
+            pool_info.maxSets += size.descriptorCount;
+        }
+        pool_info.poolSizeCount = static_cast<std::uint32_t>(pool_sizes.size());
+        pool_info.pPoolSizes = pool_sizes.data();
+
+        const VkResult result =
+            vkCreateDescriptorPool(device_, &pool_info, nullptr, &descriptor_pool_);
+        if (result != VK_SUCCESS) {
+            report_failure("vkCreateDescriptorPool", result);
+            return false;
+        }
+        return true;
+    }
+
+    // Sets up Dear ImGui/ImPlot and the Vulkan renderer backend on top of
+    // the pipeline created so far (render_pass_/device_/descriptor_pool_
+    // etc. must already exist). Mirrors the non-Windows path's ImGui/ImPlot
+    // context setup and config flags (see main.cpp) so behavior matches
+    // across backends; only the renderer backend init (ImGui_ImplVulkan_Init
+    // vs ImGui_ImplOpenGL3_Init) and platform backend init
+    // (ImGui_ImplGlfw_InitForVulkan vs ...InitForOpenGL) differ.
+    [[nodiscard]] bool init_imgui() {
+        IMGUI_CHECKVERSION();
+        ImGui::CreateContext();
+        ImPlot::CreateContext();
+        ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+        // Docking branch (see docs/adr/0003-pin-imgui-to-docking-branch.md):
+        // lets the "Vectors"/"Polar plot" windows dock into ui::App's
+        // dockspace instead of floating freely.
+        ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+        // See main.cpp's identical setting for why: the polar plot's
+        // hand-rolled tip drag (#44/#48) needs window-move restricted to the
+        // title bar so it doesn't fall through and move the window instead.
+        ImGui::GetIO().ConfigWindowsMoveFromTitleBarOnly = true;
+
+        // Read the window's initial content scale so the very first font
+        // atlas build (below) is already correct, without waiting for a
+        // content-scale-changed callback that may never fire if the window
+        // opens on its eventual monitor -- same as the non-Windows path.
+        float xscale = 1.0F;
+        float yscale_unused = 1.0F;
+        glfwGetWindowContentScale(window_, &xscale, &yscale_unused);
+        content_scale_ = xscale;
+        rebuild_font_atlas(content_scale_);
+
+        ImGui_ImplGlfw_InitForVulkan(window_, true);
+
+        ImGui_ImplVulkan_InitInfo init_info{};
+        init_info.ApiVersion = VK_API_VERSION_1_0;
+        init_info.Instance = instance_;
+        init_info.PhysicalDevice = physical_device_;
+        init_info.Device = device_;
+        init_info.QueueFamily = graphics_family_;
+        init_info.Queue = graphics_queue_;
+        init_info.DescriptorPool = descriptor_pool_;
+        init_info.MinImageCount = kFramesInFlight;
+        init_info.ImageCount = static_cast<std::uint32_t>(swapchain_images_.size());
+        init_info.PipelineInfoMain.RenderPass = render_pass_;
+        init_info.PipelineInfoMain.Subpass = 0;
+        init_info.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+        init_info.CheckVkResultFn = check_vk_result;
+
+        if (!ImGui_ImplVulkan_Init(&init_info)) {
+            std::fprintf(stderr, "Vulkan initialization failed: ImGui_ImplVulkan_Init.\n");
+            return false;
+        }
+        imgui_vulkan_initialized_ = true;
+        return true;
+    }
+
     [[nodiscard]] bool recreate_swapchain() {
         vkDeviceWaitIdle(device_);
         cleanup_swapchain();
         return create_swapchain() && create_image_views() && create_framebuffers();
     }
 
-    void record_command_buffer(VkCommandBuffer command_buffer, std::uint32_t image_index) const {
+    // Records the render pass and, inside it, Dear ImGui's Vulkan draw data
+    // -- the full ui::App UI, docked panels, polar plot and all -- via
+    // ImGui_ImplVulkan_RenderDrawData(), the Vulkan analog of the OpenGL
+    // path's ImGui_ImplOpenGL3_RenderDrawData() call in main.cpp.
+    void record_command_buffer(VkCommandBuffer command_buffer, std::uint32_t image_index,
+                               ImDrawData* draw_data) const {
         VkCommandBufferBeginInfo begin_info{};
         begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         vkBeginCommandBuffer(command_buffer, &begin_info);
@@ -638,11 +824,12 @@ private:
         render_pass_info.pClearValues = &clear_value;
 
         vkCmdBeginRenderPass(command_buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
+        ImGui_ImplVulkan_RenderDrawData(draw_data, command_buffer);
         vkCmdEndRenderPass(command_buffer);
         vkEndCommandBuffer(command_buffer);
     }
 
-    void draw_frame() {
+    void draw_frame(ImDrawData* draw_data) {
         vkWaitForFences(device_, 1, &in_flight_fences_[current_frame_], VK_TRUE,
                         std::numeric_limits<std::uint64_t>::max());
 
@@ -663,7 +850,7 @@ private:
 
         VkCommandBuffer command_buffer = command_buffers_[current_frame_];
         vkResetCommandBuffer(command_buffer, 0);
-        record_command_buffer(command_buffer, image_index);
+        record_command_buffer(command_buffer, image_index, draw_data);
 
         const std::array<VkSemaphore, 1> wait_semaphores = {
             image_available_semaphores_[current_frame_]};
@@ -737,9 +924,17 @@ private:
     std::vector<VkFence> in_flight_fences_;
     std::size_t current_frame_ = 0;
     bool framebuffer_resized_ = false;
+
+    VkDescriptorPool descriptor_pool_ = VK_NULL_HANDLE;
+    bool imgui_vulkan_initialized_ = false;
+    float content_scale_ = 1.0F;
+    // Non-owning; valid only during run()'s while loop (see
+    // on_content_scale_changed's doc comment) -- ui:: never depends on GLFW
+    // itself, so this is how the content-scale callback below reaches it.
+    ui::App* ui_app_ = nullptr;
 };
 
-int run_vulkan_clear_window() {
+int run_vulkan_app() {
     glfwSetErrorCallback(glfw_error_callback);
     if (glfwInit() == GLFW_FALSE) {
         std::fprintf(stderr, "Failed to initialize GLFW.\n");
@@ -766,6 +961,12 @@ int run_vulkan_clear_window() {
     }
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    // Same cross-platform DPI/content-scale policy as the non-Windows path
+    // (see main.cpp and CONTEXT.md's "content scale" entry): have GLFW
+    // itself resize the window to match a monitor's content scale rather
+    // than leaving it at its requested logical size -- must be set before
+    // window creation.
+    glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE);
     GLFWwindow* window =
         glfwCreateWindow(kInitialWidth, kInitialHeight, "polar-plotter", nullptr, nullptr);
     if (window == nullptr) {
@@ -776,7 +977,7 @@ int run_vulkan_clear_window() {
 
     int exit_code = EXIT_SUCCESS;
     {
-        VulkanClearWindow vulkan(window);
+        VulkanApp vulkan(window);
         if (!vulkan.init()) {
             // vulkan.init() has already printed an actionable message for
             // whichever step failed; no silent fallback to OpenGL (hard
@@ -785,7 +986,7 @@ int run_vulkan_clear_window() {
         } else {
             vulkan.run();
         }
-    }  // ~VulkanClearWindow tears down whatever it managed to create.
+    }  // ~VulkanApp tears down whatever it managed to create.
 
     glfwDestroyWindow(window);
     glfwTerminate();
