@@ -57,7 +57,7 @@ One-way module dependency graph — do not add edges against it:
 | `vector_math` (`vecmath::`) | standard library only | ImGui, ImPlot, anything UI |
 | `polar_plotting` (`polarplot::`) | Dear ImGui, ImPlot | `vector_math`, `ui` |
 | `ui` (`ui::`) | `vector_math`, `polar_plotting`, ImGui, ImPlot | GLFW / windowing |
-| `app/` | `ui`, plus GLFW/OpenGL host glue | — |
+| `app/` | `ui`, plus GLFW/OpenGL host glue (Linux/macOS) and Vulkan-on-Windows host glue (`volk` + Vulkan-Headers, Windows only) | — |
 
 `polar_plotting` is meant to be liftable into another project, so it keeps its
 own `polarplot::Point` rather than reaching for `vecmath::Vec2`. Conversions
@@ -82,6 +82,11 @@ Each module is `src/<name>/{include/<name>/*.hpp, src/*.cpp}` with its own
 Targets Linux, Windows (MSYS2 `clang64`), and macOS, all with Clang. Keep
 platform branches in `app/` and the CMake dependency layer; modules stay
 platform-agnostic.
+
+Windows renders via Vulkan (`app/vulkan_backend.{hpp,cpp}`), not OpenGL — a
+hard cutover with no runtime fallback; see
+`docs/adr/0004-windows-vulkan-hard-cutover.md`. Linux and macOS are
+unaffected and keep the OpenGL3 + Dear ImGui/ImPlot path in `app/main.cpp`.
 
 ## Agent skills
 
