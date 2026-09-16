@@ -244,6 +244,17 @@ void App::save() const {
 }
 
 void App::apply_current_theme() const {
+    // Reset to ImGui's built-in default sizing before scaling: ScaleAllSizes
+    // multiplies whatever the style's fields currently hold, so calling it
+    // against an already-scaled style (e.g. a second theme change at the
+    // same content scale) would compound the scale factor rather than
+    // re-derive it. Resetting first keeps this call idempotent under repeat
+    // invocations, matching the "always re-derive from scratch" rule that
+    // theme_style -> scale_theme_style -> apply_theme already follows for
+    // colors/rounding.
+    ImGuiStyle& style = ImGui::GetStyle();
+    style = ImGuiStyle();
+    style.ScaleAllSizes(content_scale_);
     apply_theme(scale_theme_style(theme_style(theme_), content_scale_));
 }
 
