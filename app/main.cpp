@@ -28,13 +28,49 @@
 
 namespace {
 
-// Fixed size for the app's one and only font, chosen for this app's widget
-// density (compact input rows, plot labels, tables) at the default window
-// size. No font-size UI: see #60.
+// Base (100%-scale) size for the app's one and only font, chosen for this
+// app's widget density (compact input rows, plot labels, tables) at the
+// default window size. No font-size UI: see #60. The font atlas is always
+// actually built at kFontSizePixels * content_scale (see rebuild_font_atlas)
+// so text stays crisp on a scaled display instead of being blurrily
+// upscaled from this base size.
 constexpr float kFontSizePixels = 18.0F;
 
 void glfw_error_callback(int error, const char* description) {
     std::fprintf(stderr, "GLFW error %d: %s\n", error, description);
+}
+
+// Clear and rebuild the font atlas with the embedded JetBrains Mono font at
+// kFontSizePixels * content_scale, so the rendered glyphs are natively that
+// size rather than a linear stretch of some other fixed size (which would
+// look blurry on a scaled display -- see CONTEXT.md's "content scale"
+// entry). Rebuilding marks the atlas's ImTextureData for re-upload; Dear
+// ImGui's OpenGL3 backend re-uploads any texture flagged this way itself,
+// from ImGui::Render()'s draw data, the next time it runs -- no explicit
+// destroy/create GPU call needed here.
+void rebuild_font_atlas(float content_scale) {
+    ImGuiIO& io = ImGui::GetIO();
+    io.Fonts->Clear();
+    io.Fonts->AddFontFromMemoryCompressedTTF(JetBrainsMonoMedium_compressed_data,
+                                             JetBrainsMonoMedium_compressed_size,
+                                             kFontSizePixels * content_scale);
+    io.Fonts->Build();
+}
+
+// GLFWwindowcontentscalefun: fires on startup's first PollEvents and again
+// whenever the window moves to a monitor with a different content scale
+// (e.g. dragged from a 100% to a 150% display). Rebuilds the font atlas at
+// the new effective pixel size (re-uploaded to the GPU automatically -- see
+// rebuild_font_atlas), then re-derives ui::App's style from scratch for the
+// new scale -- see ui::App::apply_current_theme's doc comment for why that
+// composition can't just scale ImGuiStyle in place.
+void glfw_content_scale_callback(GLFWwindow* window, float xscale, float /*yscale*/) {
+    rebuild_font_atlas(xscale);
+
+    auto* app = static_cast<ui::App*>(glfwGetWindowUserPointer(window));
+    if (app != nullptr) {
+        app->set_content_scale(xscale);
+    }
 }
 
 // Write an RGB framebuffer (top-down) as a binary PPM (P6). Chosen for zero
@@ -100,6 +136,11 @@ int main() {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
+    // Have GLFW itself resize the window to match a monitor's content scale
+    // (e.g. a 150%-scale Windows display) rather than leaving it at its
+    // requested logical size -- must be set before window creation. See
+    // CONTEXT.md's "content scale" entry.
+    glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE);
     if (screenshot_mode) {
         glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
     }
@@ -111,6 +152,14 @@ int main() {
     }
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);
+
+    // Read the window's initial content scale so the very first font atlas
+    // build (below) and the very first App::set_content_scale call are
+    // already correct, without waiting for a content-scale-changed callback
+    // that may never fire if the window opens on its eventual monitor.
+    float content_scale = 1.0F;
+    float content_scale_y_unused = 1.0F;
+    glfwGetWindowContentScale(window, &content_scale, &content_scale_y_unused);
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -134,15 +183,27 @@ int main() {
     // JetBrains Mono Medium, embedded at build time (binary_to_compressed_c
     // over the fetched TTF, see cmake/Dependencies.cmake) -- no
     // AddFontFromFileTTF / runtime file path loading. This is the app's
-    // default and only font (#60).
-    ImGui::GetIO().Fonts->AddFontFromMemoryCompressedTTF(
-        JetBrainsMonoMedium_compressed_data, JetBrainsMonoMedium_compressed_size, kFontSizePixels);
+    // default and only font (#60), built at the window's actual content
+    // scale from the start (see rebuild_font_atlas) rather than a fixed size
+    // ImGui_ImplOpenGL3_Init would otherwise upload once and never revisit.
+    rebuild_font_atlas(content_scale);
 
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glsl_version);
 
     {
         ui::App app(config_path());
+        // See ui::App::set_content_scale's doc comment: this both records
+        // the scale read above and re-derives the theme's style for it,
+        // since the constructor above applied the theme at the default
+        // (unscaled) content_scale_ of 1.0.
+        app.set_content_scale(content_scale);
+
+        // Let the content-scale-changed callback below reach this App
+        // instance without ui:: ever depending on GLFW itself.
+        glfwSetWindowUserPointer(window, &app);
+        glfwSetWindowContentScaleCallback(window, glfw_content_scale_callback);
+
         int frame = 0;
 
         while (glfwWindowShouldClose(window) == GLFW_FALSE) {

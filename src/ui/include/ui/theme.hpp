@@ -82,6 +82,17 @@ struct ThemeStyle {
 /// any live ImGui context -- see ui::apply_theme for that.
 [[nodiscard]] ThemeStyle theme_style(Theme theme);
 
+/// Returns \p style with its rounding fields (window_rounding/frame_rounding/
+/// grab_rounding) multiplied by \p content_scale; every color passes through
+/// unchanged. Pure -- no live ImGui context, no DPI/GLFW concept of any kind
+/// (that lives in app/, which is the only place that knows what a window's
+/// content scale is; see CONTEXT.md's "content scale" entry). Composing this
+/// after theme_style and before apply_theme is what lets DPI scaling and a
+/// theme's fixed rounding coexist without one clobbering the other -- see the
+/// composition call site (ui::App::apply_current_theme) for why that ordering
+/// must be redone from scratch every time, rather than cached or compounded.
+[[nodiscard]] ThemeStyle scale_theme_style(const ThemeStyle& style, float content_scale);
+
 /// Push \p style's colors/rounding fields into ImGui::GetStyle(). Call once
 /// when the selection changes, not every frame -- there is a live ImGui
 /// context by the time this runs.

@@ -6,6 +6,7 @@
 #include "ui/theme.hpp"
 
 using ui::kAllThemes;
+using ui::scale_theme_style;
 using ui::Theme;
 using ui::theme_style;
 using ui::ThemeStyle;
@@ -44,4 +45,25 @@ TEST_CASE("kSlate and kMidnight keep sharp/default corner rounding", "[theme]") 
 
 TEST_CASE("theme_style is a pure function (same input, same output)", "[theme]") {
     CHECK(theme_style(Theme::kMint) == theme_style(Theme::kMint));
+}
+
+TEST_CASE("scale_theme_style scales only the rounding fields", "[theme]") {
+    const ThemeStyle style = theme_style(Theme::kPaper);
+    const ThemeStyle scaled = scale_theme_style(style, 1.5F);
+
+    CHECK(scaled.window_rounding == style.window_rounding * 1.5F);
+    CHECK(scaled.frame_rounding == style.frame_rounding * 1.5F);
+    CHECK(scaled.grab_rounding == style.grab_rounding * 1.5F);
+
+    // Everything else -- every color -- must pass through untouched.
+    ThemeStyle expected_colors_only = style;
+    expected_colors_only.window_rounding = scaled.window_rounding;
+    expected_colors_only.frame_rounding = scaled.frame_rounding;
+    expected_colors_only.grab_rounding = scaled.grab_rounding;
+    CHECK(scaled == expected_colors_only);
+}
+
+TEST_CASE("scale_theme_style at 1.0 is the identity", "[theme]") {
+    const ThemeStyle style = theme_style(Theme::kMidnight);
+    CHECK(scale_theme_style(style, 1.0F) == style);
 }
