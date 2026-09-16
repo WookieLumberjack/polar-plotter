@@ -119,6 +119,58 @@ if(NOT MSVC)
 endif()
 
 # ---------------------------------------------------------------------------
+# Vulkan-Headers + volk - Windows-only Vulkan clear-window backend (#99/#96).
+#
+# Fetched unconditionally (not gated on WIN32) rather than following the
+# GLFW X11/Wayland platform-conditional pattern above: app/vulkan_backend.cpp
+# is itself compiled on every platform (see app/CMakeLists.txt) purely so
+# it's covered by clang-format/clang-tidy and by a real warnings-as-errors
+# Clang compile against these headers on Linux/macOS too, even though
+# app::run_vulkan_clear_window() is only ever called from the `#ifdef _WIN32`
+# branch in app/main.cpp. This costs a small extra fetch/compile on
+# Linux/macOS but changes nothing about their runtime behavior (dead code;
+# volk's dynamic loader is never invoked there) -- see
+# docs/adr/0004-windows-vulkan-hard-cutover.md.
+#
+# No Vulkan SDK is required to build or run: GLFW dynamically loads the
+# Vulkan loader (vulkan-1.dll on Windows) at runtime with no link-time import
+# library, and volk (MIT) resolves the remaining instance/device function
+# pointers the same way Dear ImGui's own example_glfw_vulkan does.
+# Vulkan-Headers (Apache-2.0 OR MIT) supplies the header-only type/constant
+# declarations volk and app code build against. Both are pinned to the same
+# `vulkan-sdk-1.3.296.0` tag so their Vulkan API versions line up.
+# ---------------------------------------------------------------------------
+FetchContent_Declare(vulkan_headers
+    GIT_REPOSITORY https://github.com/KhronosGroup/Vulkan-Headers.git
+    GIT_TAG vulkan-sdk-1.3.296.0
+    GIT_SHALLOW TRUE
+    SYSTEM)
+
+# volk's own CMakeLists tries to discover a system Vulkan SDK
+# (find_package(Vulkan) / $VULKAN_SDK) to find headers when
+# VOLK_PULL_IN_VULKAN is ON; this project deliberately has neither, so that
+# is turned off and volk is pointed at the Vulkan-Headers target fetched
+# above instead (below, after FetchContent_MakeAvailable).
+set(VOLK_PULL_IN_VULKAN OFF CACHE BOOL "" FORCE)
+set(VOLK_INSTALL OFF CACHE BOOL "" FORCE)
+
+FetchContent_Declare(volk
+    GIT_REPOSITORY https://github.com/zeux/volk.git
+    GIT_TAG vulkan-sdk-1.3.296.0
+    GIT_SHALLOW TRUE
+    SYSTEM)
+
+FetchContent_MakeAvailable(vulkan_headers volk)
+
+target_link_libraries(volk PUBLIC Vulkan::Headers)
+target_link_libraries(volk_headers INTERFACE Vulkan::Headers)
+
+# Vendored code: not our warning policy.
+if(NOT MSVC)
+    target_compile_options(volk PRIVATE -w)
+endif()
+
+# ---------------------------------------------------------------------------
 # JetBrains Mono - the app's default (and only) font, embedded at build time.
 #
 # Fetched as a release zip (font source has no upstream CMake, and there's

@@ -1,5 +1,8 @@
 add_executable(polar_plotter_app
-    main.cpp)
+    main.cpp
+    # Compiled on every platform (see cmake/Dependencies.cmake's
+    # Vulkan-Headers/volk section for why); only ever invoked on Windows.
+    vulkan_backend.cpp)
 
 set_target_properties(polar_plotter_app PROPERTIES
     OUTPUT_NAME polar-plotter)
@@ -15,6 +18,8 @@ target_link_libraries(polar_plotter_app
         imgui::imgui
         implot::implot
         glfw
+        volk
+        Vulkan::Headers
         polar_plotter::warnings)
 
 if(APPLE)
@@ -23,7 +28,12 @@ if(APPLE)
     # entry points that Dear ImGui's backend also relies on.
     target_compile_definitions(polar_plotter_app PRIVATE GL_SILENCE_DEPRECATION)
 elseif(WIN32)
-    target_link_libraries(polar_plotter_app PRIVATE opengl32)
+    # No opengl32 link: Windows renders via the Vulkan path in
+    # vulkan_backend.cpp (see docs/adr/0004-windows-vulkan-hard-cutover.md),
+    # not app/main.cpp's OpenGL branch. imgui::imgui still links opengl32
+    # transitively for its imgui_impl_opengl3.cpp translation unit, which
+    # stays compiled (unused on Windows) for the other two platforms' sake.
+    #
     # Static-link the MSYS2 clang64 runtime (libc++/libunwind/libwinpthread)
     # so the released .exe has no MSYS2 DLL dependencies -- see the release
     # workflow, which ships this binary standalone rather than alongside its

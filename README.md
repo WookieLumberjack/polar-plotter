@@ -191,6 +191,9 @@ Bundled dependencies keep their own licenses: [Dear
 ImGui](https://github.com/ocornut/imgui) and
 [ImPlot](https://github.com/epezent/implot) (MIT), [GLFW](https://www.glfw.org/)
 (zlib/libpng), [Catch2](https://github.com/catchorg/Catch2) (Boost Software
-License 1.0, test-only — not part of the built application), and
+License 1.0, test-only — not part of the built application),
 [JetBrains Mono](https://www.jetbrains.com/lp/mono/) (SIL Open Font License
-1.1), embedded into the binary as the app's default font.
+1.1), embedded into the binary as the app's default font, and — for the
+Windows Vulkan rendering backend —
+[Vulkan-Headers](https://github.com/KhronosGroup/Vulkan-Headers) (Apache-2.0
+OR MIT) and [volk](https://github.com/zeux/volk) (MIT).

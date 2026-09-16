@@ -1,5 +1,18 @@
-// Desktop host: creates a GLFW window + OpenGL3 context, wires up Dear ImGui and
-// ImPlot, and runs ui::App once per frame. Nothing project-specific lives here.
+// Desktop host. On Windows this stands up a bare Vulkan clear-color window
+// (see vulkan_backend.hpp/.cpp and #99/#96) instead of the OpenGL/ImGui path
+// below -- a validation spike for whether switching Windows off OpenGL fixes
+// the maximize-time stall described in #96, before a sibling ticket wires
+// ImGui rendering on top of the same Vulkan pipeline. Linux and macOS are
+// untouched: they still create a GLFW window + OpenGL3 context, wire up Dear
+// ImGui and ImPlot, and run ui::App once per frame, exactly as before.
+
+#ifdef _WIN32
+
+#include "vulkan_backend.hpp"
+
+int main() { return app::run_vulkan_clear_window(); }
+
+#else
 
 #include <cstdint>
 #include <cstdio>
@@ -254,3 +267,5 @@ int main() {
     glfwTerminate();
     return EXIT_SUCCESS;
 }
+
+#endif  // _WIN32
