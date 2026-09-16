@@ -18,6 +18,14 @@ namespace app {
 // fails, or no suitable device is found, this prints an actionable message
 // to stderr and returns a failure exit code rather than falling back.
 //
+// Also honors POLAR_PLOTTER_SCREENSHOT (#101), the same headless-capture env
+// var main.cpp's OpenGL path supports: when set, renders a few frames to a
+// hidden window, copies the current swapchain image to a host-visible
+// staging buffer, and writes it out as a PPM via the shared app::write_ppm
+// (ppm_writer.hpp) -- identical output format and frame-count-then-exit
+// behavior to the OpenGL path, just reached via a Vulkan image readback
+// instead of glReadPixels.
+//
 // Only ever called on Windows (see the `#ifdef _WIN32` branch in
 // app/main.cpp); Linux and macOS keep the existing GLFW + OpenGL3 + ImGui/
 // ImPlot path in main.cpp, completely untouched by this file. This

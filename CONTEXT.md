@@ -126,9 +126,11 @@ light with noticeably larger rounding.
 
 **Content scale**:
 The OS/monitor's display-scale factor (1.0 = 100%, 1.5 = 150%, ...), read
-from GLFW (`glfwGetWindowContentScale`) by `app/main.cpp` and reacted to at
-runtime via `glfwSetWindowContentScaleCallback` (e.g. a window dragged from a
-100% to a 150%-scale monitor). A pure `app/`/windowing concept -- `ui` never
+from GLFW (`glfwGetWindowContentScale`) by `app/`'s host glue --
+`app/main.cpp` on Linux/macOS (OpenGL) and `app/vulkan_backend.cpp` on
+Windows (Vulkan) each read it the same way -- and reacted to at runtime via
+`glfwSetWindowContentScaleCallback` (e.g. a window dragged from a 100% to a
+150%-scale monitor). A pure `app/`/windowing concept -- `ui` never
 talks to GLFW (see `CLAUDE.md`'s module table) and knows content scale only
 as the plain `float` passed to `ui::App::set_content_scale`. Drives two
 independent effects: the font atlas is rebuilt (cleared, the embedded
