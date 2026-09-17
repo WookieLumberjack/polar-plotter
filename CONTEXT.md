@@ -27,6 +27,43 @@ dot product (`A . B`) shown elsewhere in the UI, which is unrelated. Amplitude
 and Phase are the same underlying magnitude/angle already used elsewhere,
 just labeled to match the Real/Imag pairing.
 
+**Phasor**:
+A named vector's Amplitude/Phase pair, read as the coefficient of a
+time-domain sinusoid: `Amp · cos(ωt ± φ)` for a shared angular frequency ω
+common to every currently-shown signal. Not a new quantity — every named
+vector already has an Amplitude/Phase (see **Named vector**, **Complex
+product / Complex quotient**); "phasor" is just this project's term for that
+same pair in its time-domain-signal role. Deliberately grounded in standard
+phasor mathematics, not any specific engineering discipline (e.g. vibration
+analysis), matching this glossary's existing generic-vocabulary rule (see
+the project description above).
+_Avoid_: vibration vector, signal vector
+
+**Waveform**:
+A Phasor's time-domain projection: `Amp · cos(ωt ± φ)`, sampled into a
+fixed-size, fixed-rate buffer and drawn on the (Cartesian, non-polar)
+waveform plot. Owned/drawn by the `waveform_plotting` module, kept separate
+from `polar_plotting` since it has no polar/angle concept at all (no zero
+direction, no angle sign, no rings) and is meant to be independently
+liftable the same way `polar_plotting` is. Every named vector's Waveform
+buffer advances at the fixed sample rate continuously, whether or not that
+vector is currently shown: a hidden Waveform's samples are clamped to 0
+rather than paused, so toggling visibility back on resumes live values on
+the next sample instead of replaying a stale or backfilled history.
+_Avoid_: signal, trace (informal; use "Waveform" for the concept, "trace"
+only loosely when talking about its on-screen line)
+
+**Phase convention**:
+A global Lag/Lead toggle controlling the sign of φ inside every Waveform's
+equation (`cos(ωt + φ)` vs. `cos(ωt − φ)`). Deliberately independent of
+**Angle convention** below: that convention is a spatial/rendering concern
+(where a phase value is drawn on the polar canvas) computed entirely
+downstream of the Amplitude/Phase numbers, while Phase convention is a
+temporal concern (how a phase number maps to a time shift) that never
+touches the polar plot. Neither is derivable from the other.
+_Avoid_: rotation direction, measurement convention (existing Angle
+convention terms — do not conflate with Phase convention)
+
 **Angle convention**:
 The pair of settings (zero direction, angle sign) that maps a vector's
 math-convention angle to where it's actually drawn on a polar plot. Owned by
