@@ -56,7 +56,8 @@ One-way module dependency graph — do not add edges against it:
 |---|---|---|
 | `vector_math` (`vecmath::`) | standard library only | ImGui, ImPlot, anything UI |
 | `polar_plotting` (`polarplot::`) | Dear ImGui, ImPlot | `vector_math`, `ui` |
-| `ui` (`ui::`) | `vector_math`, `polar_plotting`, ImGui, ImPlot | GLFW / windowing |
+| `waveform_plotting` (`waveform_plotting::`) | Dear ImGui, ImPlot | `vector_math`, `ui` |
+| `ui` (`ui::`) | `vector_math`, `polar_plotting`, `waveform_plotting`, ImGui, ImPlot | GLFW / windowing |
 | `app/` | `ui`, plus GLFW/OpenGL host glue (Linux/macOS) and Vulkan-on-Windows host glue (`volk` + Vulkan-Headers, Windows only) | — |
 
 `polar_plotting` is meant to be liftable into another project, so it keeps its
