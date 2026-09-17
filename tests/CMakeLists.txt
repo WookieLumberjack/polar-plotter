@@ -43,6 +43,25 @@ endif()
 
 catch_discover_tests(polar_plotting_tests)
 
+add_executable(waveform_plotting_tests
+    waveform_buffer_tests.cpp)
+
+target_link_libraries(waveform_plotting_tests
+    PRIVATE
+        polar_plotter::waveform_plotting
+        polar_plotter::warnings
+        Catch2::Catch2WithMain)
+
+target_compile_features(waveform_plotting_tests PRIVATE cxx_std_23)
+
+# See the comment above vec2_tests.cpp's identical suppression.
+if(NOT MSVC)
+    set_source_files_properties(waveform_buffer_tests.cpp PROPERTIES
+        COMPILE_OPTIONS "-Wno-unknown-warning-option;-Wno-c2y-extensions")
+endif()
+
+catch_discover_tests(waveform_plotting_tests)
+
 add_executable(ui_tests
     ui_angle_convention_tests.cpp
     construction_tests.cpp
