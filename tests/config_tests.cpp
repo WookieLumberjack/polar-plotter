@@ -7,11 +7,13 @@
 
 #include "ui/config.hpp"
 #include "ui/theme.hpp"
+#include "waveform_plotting/waveform_buffer.hpp"
 
 using ui::Config;
 using ui::load_config;
 using ui::save_config;
 using ui::Theme;
+using waveform_plotting::PhaseConvention;
 
 namespace {
 
@@ -206,6 +208,110 @@ TEST_CASE("loading a config file with an unrecognized theme= value falls back to
     }
 
     const Config loaded = require_value(load_config(path));
+    CHECK(loaded.theme == Config{}.theme);
+
+    std::filesystem::remove(path);
+}
+
+TEST_CASE(
+    "waveform_frequency_hz/waveform_phase_convention round-trip through "
+    "save_config/load_config",
+    "[config]") {
+    const std::filesystem::path path = make_temp_path("polar_plotter_config_tests_waveform.cfg");
+
+    Config cfg{};
+    cfg.waveform_frequency_hz = 2.5F;
+    cfg.waveform_phase_convention = PhaseConvention::kLead;
+
+    REQUIRE(save_config(path, cfg));
+    const Config loaded = require_value(load_config(path));
+    CHECK(loaded.waveform_frequency_hz == 2.5F);
+    CHECK(loaded.waveform_phase_convention == PhaseConvention::kLead);
+
+    std::filesystem::remove(path);
+}
+
+TEST_CASE(
+    "loading a config file that omits waveform_frequency_hz/waveform_phase_convention falls back "
+    "to their defaults",
+    "[config]") {
+    const std::filesystem::path path =
+        make_temp_path("polar_plotter_config_tests_waveform_missing.cfg");
+
+    {
+        std::ofstream out(path, std::ios::trunc);
+        out << "a.x=1.0\n";
+        out << "a.y=2.0\n";
+    }
+
+    const Config loaded = require_value(load_config(path));
+    CHECK(loaded.waveform_frequency_hz == Config{}.waveform_frequency_hz);
+    CHECK(loaded.waveform_phase_convention == Config{}.waveform_phase_convention);
+
+    std::filesystem::remove(path);
+}
+
+TEST_CASE(
+    "loading a config file with an out-of-range waveform_frequency_hz= value clamps it into "
+    "range",
+    "[config]") {
+    const std::filesystem::path path =
+        make_temp_path("polar_plotter_config_tests_waveform_frequency_out_of_range.cfg");
+
+    const auto check_clamped = [&](std::string_view value, float expected) {
+        {
+            std::ofstream out(path, std::ios::trunc);
+            out << "waveform_frequency_hz=" << value << '\n';
+        }
+        const Config loaded = require_value(load_config(path));
+        CHECK(loaded.waveform_frequency_hz == expected);
+    };
+
+    check_clamped("0.0", 0.1F);
+    check_clamped("-3.0", 0.1F);
+    check_clamped("50.0", 5.0F);
+
+    std::filesystem::remove(path);
+}
+
+TEST_CASE(
+    "loading a config file with an unrecognized waveform_phase_convention= value falls back to "
+    "the default",
+    "[config]") {
+    const std::filesystem::path path =
+        make_temp_path("polar_plotter_config_tests_waveform_phase_convention_unrecognized.cfg");
+
+    {
+        std::ofstream out(path, std::ios::trunc);
+        out << "waveform_phase_convention=not_a_real_convention\n";
+    }
+
+    const Config loaded = require_value(load_config(path));
+    CHECK(loaded.waveform_phase_convention == Config{}.waveform_phase_convention);
+
+    std::filesystem::remove(path);
+}
+
+TEST_CASE(
+    "waveform_phase_convention is unaffected by, and does not affect, angle-convention fields "
+    "when saved/loaded together",
+    "[config]") {
+    const std::filesystem::path path =
+        make_temp_path("polar_plotter_config_tests_waveform_phase_convention_independence.cfg");
+
+    // #105/#108: Phase convention and Angle convention (rotation direction /
+    // measurement convention -- not modeled in ui::Config at all, only in
+    // ui::App/PlotInputs) must never interact. This round-trips Phase
+    // convention alone and checks nothing else about the loaded config
+    // shifted as a side effect.
+    Config cfg{};
+    cfg.waveform_phase_convention = PhaseConvention::kLead;
+
+    REQUIRE(save_config(path, cfg));
+    const Config loaded = require_value(load_config(path));
+    CHECK(loaded.waveform_phase_convention == PhaseConvention::kLead);
+    CHECK(loaded.a == Config{}.a);
+    CHECK(loaded.b == Config{}.b);
     CHECK(loaded.theme == Config{}.theme);
 
     std::filesystem::remove(path);

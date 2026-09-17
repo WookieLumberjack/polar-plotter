@@ -6,6 +6,7 @@
 #include <optional>
 
 #include "ui/theme.hpp"
+#include "waveform_plotting/waveform_buffer.hpp"
 
 namespace ui {
 
@@ -37,6 +38,18 @@ struct Config {
     // enum name (e.g. "slate"); an unrecognized/missing value falls back to
     // the default, same rule as every other field here.
     Theme theme{Theme::kSlate};
+    // Shared frequency (Hz, clamped to [ui::kMinWaveformFrequencyHz,
+    // ui::kMaxWaveformFrequencyHz]) applied to every plotted waveform trace
+    // in the waveform panel (#105/#108). Fully independent of the polar
+    // plot's Angle convention fields below -- see waveform_phase_convention.
+    float waveform_frequency_hz{1.0F};
+    // Lag/Lead sign convention for the waveform panel's Amp*cos(wt +/- phi)
+    // equation (#105/#108). Deliberately a separate field from
+    // rotation_direction/measurement_convention above (ui::RotationDirection/
+    // ui::MeasurementConvention, the polar plot's Angle convention) -- the
+    // two settings must never interact, so they don't even share a type.
+    waveform_plotting::PhaseConvention waveform_phase_convention{
+        waveform_plotting::PhaseConvention::kLag};
 
     friend bool operator==(const Config&, const Config&) = default;
 };

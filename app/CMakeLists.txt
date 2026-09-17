@@ -3,6 +3,7 @@ add_executable(polar_plotter_app
     config_path.cpp
     font_atlas.cpp
     ppm_writer.cpp
+    waveform_ticker.cpp
     # Compiled on every platform (see cmake/Dependencies.cmake's
     # Vulkan-Headers/volk section for why); only ever invoked on Windows.
     vulkan_backend.cpp)

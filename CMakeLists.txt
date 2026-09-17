@@ -23,11 +23,13 @@ include(CompilerWarnings)
 include(Dependencies)
 
 # First-party modules. Keep the dependency direction one-way:
-#   vector_math   -> (nothing)
-#   polar_plotting -> imgui, implot            (reusable, no vector_math)
-#   ui            -> vector_math, polar_plotting, imgui, implot
+#   vector_math      -> (nothing)
+#   polar_plotting   -> imgui, implot            (reusable, no vector_math)
+#   waveform_plotting -> imgui, implot           (reusable, no vector_math)
+#   ui               -> vector_math, polar_plotting, waveform_plotting, imgui, implot
 add_subdirectory(src/vector_math)
 add_subdirectory(src/polar_plotting)
+add_subdirectory(src/waveform_plotting)
 add_subdirectory(src/ui)
 
 # The application executable.

@@ -1,15 +1,23 @@
 #include <array>
 #include <cstddef>
+#include <optional>
 #include <string>
 
 #include <catch2/catch_test_macros.hpp>
 
 #include "polar_plotting/polar_plot.hpp"
+#include "ui/derived_vectors.hpp"
 #include "ui/named_vector_spec.hpp"
+#include "ui/plot_plan.hpp"
+#include "vector_math/vec2.hpp"
 
 using polarplot::MarkerColor;
 using ui::kNamedVectorSpecs;
 using ui::named_vector_color;
+using ui::named_vector_visible;
+using ui::NamedVectorSpec;
+using ui::PlotInputs;
+using vecmath::Vec2;
 
 namespace {
 
@@ -76,4 +84,32 @@ TEST_CASE("kNamedVectorSpecs: every derived vector carries both an accessor and 
         CHECK(kNamedVectorSpecs[i].accessor != nullptr);
         CHECK(kNamedVectorSpecs[i].toggle != nullptr);
     }
+}
+
+TEST_CASE("named_vector_visible: A and B are always visible regardless of inputs",
+          "[ui][named_vector_spec]") {
+    const PlotInputs inputs{};  // every toggle off, derived_vectors all nullopt
+    CHECK(named_vector_visible(kNamedVectorSpecs[0], inputs));  // A
+    CHECK(named_vector_visible(kNamedVectorSpecs[1], inputs));  // B
+}
+
+TEST_CASE("named_vector_visible: a derived vector needs both its toggle on and a defined value",
+          "[ui][named_vector_spec]") {
+    // kNamedVectorSpecs[2] is "A - B" (difference_ab / show_difference).
+    const NamedVectorSpec& spec = kNamedVectorSpecs[2];
+
+    PlotInputs toggle_off_value_present{};
+    toggle_off_value_present.derived.difference_ab = Vec2{1.0, 2.0};
+    toggle_off_value_present.show_difference = false;
+    CHECK_FALSE(named_vector_visible(spec, toggle_off_value_present));
+
+    PlotInputs toggle_on_value_absent{};
+    toggle_on_value_absent.derived.difference_ab = std::nullopt;
+    toggle_on_value_absent.show_difference = true;
+    CHECK_FALSE(named_vector_visible(spec, toggle_on_value_absent));
+
+    PlotInputs toggle_on_value_present{};
+    toggle_on_value_present.derived.difference_ab = Vec2{1.0, 2.0};
+    toggle_on_value_present.show_difference = true;
+    CHECK(named_vector_visible(spec, toggle_on_value_present));
 }

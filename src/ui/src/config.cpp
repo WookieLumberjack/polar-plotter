@@ -6,6 +6,8 @@
 #include <string>
 #include <string_view>
 
+#include "ui/waveform_controls.hpp"
+
 namespace ui {
 namespace {
 
@@ -71,6 +73,30 @@ std::optional<Theme> parse_theme(std::string_view value) {
     return std::nullopt;
 }
 
+// waveform_phase_convention= serializes/parses as the enum's name ("lag"/
+// "lead"), not a number -- same reasoning as theme_name above. Entirely
+// independent of angle-convention parsing/serialization elsewhere in this
+// file: the two settings never interact (#105/#108).
+std::string_view phase_convention_name(waveform_plotting::PhaseConvention convention) {
+    switch (convention) {
+        case waveform_plotting::PhaseConvention::kLag:
+            return "lag";
+        case waveform_plotting::PhaseConvention::kLead:
+            return "lead";
+    }
+    return "lag";
+}
+
+std::optional<waveform_plotting::PhaseConvention> parse_phase_convention(std::string_view value) {
+    if (value == "lag") {
+        return waveform_plotting::PhaseConvention::kLag;
+    }
+    if (value == "lead") {
+        return waveform_plotting::PhaseConvention::kLead;
+    }
+    return std::nullopt;
+}
+
 // key -> pointer to the field it sets, for the flat key=value fields that
 // just need parsing (or bool conversion) and assignment. a.x/a.y/b.x/b.y are
 // handled separately below since they address into Config::a/b's elements
@@ -93,6 +119,30 @@ struct VecField {
     std::size_t index;
 };
 
+// Handles the two waveform-related keys, split out of apply() to keep its
+// cognitive complexity under the project's clang-tidy threshold. Returns
+// true iff `key` was one of them (handled either way, parsed or not).
+bool try_apply_waveform_field(Config& cfg, std::string_view key, std::string_view value) {
+    if (key == "waveform_frequency_hz") {
+        // Clamped rather than rejected-and-defaulted (unlike
+        // manual_ring_interval's non-positive rejection below): any
+        // hand-edited on-disk value, in or out of range, has an unambiguous
+        // in-range interpretation, so clamping preserves more of the user's
+        // intent than silently discarding it back to the 1.0 Hz default.
+        if (const auto v = parse_float(value)) {
+            cfg.waveform_frequency_hz = clamp_waveform_frequency_hz(*v);
+        }
+        return true;
+    }
+    if (key == "waveform_phase_convention") {
+        if (const auto v = parse_phase_convention(value)) {
+            cfg.waveform_phase_convention = *v;
+        }
+        return true;
+    }
+    return false;
+}
+
 void apply(Config& cfg, std::string_view key, std::string_view value) {
     constexpr std::array<VecField, 4> kVecFields{{
         {"a.x", &Config::a, 0},
@@ -111,6 +161,10 @@ void apply(Config& cfg, std::string_view key, std::string_view value) {
     constexpr std::array<FloatField, 1> kFloatFields{{
         {"line_width", &Config::line_width},
     }};
+
+    if (try_apply_waveform_field(cfg, key, value)) {
+        return;
+    }
 
     for (const VecField& f : kVecFields) {
         if (key == f.key) {
@@ -202,6 +256,9 @@ bool save_config(const std::filesystem::path& path, const Config& config) {
     out << "auto_scale=" << (config.auto_scale ? 1 : 0) << '\n';
     out << "manual_ring_interval=" << config.manual_ring_interval << '\n';
     out << "theme=" << theme_name(config.theme) << '\n';
+    out << "waveform_frequency_hz=" << config.waveform_frequency_hz << '\n';
+    out << "waveform_phase_convention=" << phase_convention_name(config.waveform_phase_convention)
+        << '\n';
     return out.good();
 }
 

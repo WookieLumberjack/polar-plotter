@@ -34,6 +34,7 @@
 #include "font_atlas.hpp"
 #include "ppm_writer.hpp"
 #include "ui/app.hpp"
+#include "waveform_ticker.hpp"
 
 namespace app {
 
@@ -253,6 +254,24 @@ public:
         // window itself was created hidden -- see run_vulkan_app()), then
         // capture and exit, instead of running interactively forever.
         const bool screenshot_mode = screenshot_path_ != nullptr;
+
+        // POLAR_PLOTTER_SCREENSHOT determinism (#105/#108/#109): fill every
+        // waveform buffer's full 5 second window with real simulated values
+        // before the first frame is even drawn, exactly like the OpenGL
+        // path (see main.cpp's identical call) -- keeps a headless Vulkan
+        // capture from racing real wall-clock time, which would make the
+        // captured waveform image non-deterministic run-to-run.
+        if (screenshot_mode) {
+            ui_app.prime_waveforms_for_screenshot();
+        }
+
+        // Wall-clock-to-fixed-tick accumulator (#105/#108/#109), shared with
+        // the OpenGL host via app::WaveformTicker -- see waveform_ticker.hpp
+        // and main.cpp's identical use. Skipped entirely in screenshot mode:
+        // the buffers are already fully (and deterministically) primed
+        // above.
+        WaveformTicker waveform_ticker(glfwGetTime());
+
         int frame = 0;
         int exit_code = EXIT_SUCCESS;
 
@@ -266,6 +285,10 @@ public:
             // simply not drawing until the window is restored.
             if (glfwGetWindowAttrib(window_, GLFW_ICONIFIED) != 0) {
                 continue;
+            }
+
+            if (!screenshot_mode) {
+                waveform_ticker.tick(glfwGetTime(), ui_app);
             }
 
             ImGui_ImplVulkan_NewFrame();

@@ -23,6 +23,11 @@ product, angle between) update live. Built with Dear ImGui + ImPlot.
 - **Geometric proof aids**: tip-to-tail construction and a difference-segment
   overlay show *why* a sum/difference vector is where it is, and a
   persistent zero-direction arc documents a specific angle for a screenshot.
+- **Live time-domain waveform plot**: a dockable panel treats each shown
+  vector's Amplitude/Phase as a Phasor and plots its `Amp · cos(ωt ± φ)`
+  Waveform as a continuously-scrolling oscilloscope-style trace, colored to
+  match the polar plot, with a shared adjustable frequency and a Lag/Lead
+  Phase convention (independent of the polar plot's angle convention).
 - **Five built-in themes** (dark and light, including the "Paper" theme
   above), and your last-used vectors/settings are remembered between runs.
 
@@ -37,7 +42,11 @@ All other dependencies (GLFW 3.4, Dear ImGui v1.92.9b, ImPlot v1.0, Catch2
 v3.7.1) are fetched and pinned automatically by `cmake/Dependencies.cmake` —
 no need to install them separately.
 
-Supported platforms: Linux, Windows (MSYS2 `clang64`), and macOS.
+Supported platforms: Linux, Windows (MSYS2 `clang64`), and macOS. Linux and
+macOS render via OpenGL; Windows renders via Vulkan instead (a working
+Vulkan driver is required — there is no OpenGL fallback), fixing a
+maximize-time stall the OpenGL path had on Windows — see
+[`docs/adr/0004-windows-vulkan-hard-cutover.md`](docs/adr/0004-windows-vulkan-hard-cutover.md).
 
 ## Building
 
@@ -162,18 +171,23 @@ it, never sideways or back up:
 
 ```mermaid
 graph TD
-    app["app/<br/>GLFW/OpenGL host, main loop"] --> ui
+    app["app/<br/>GLFW/OpenGL host (Linux/macOS, main.cpp)<br/>or GLFW/Vulkan host (Windows, vulkan_backend.cpp)"] --> ui
     ui["ui (ui::)<br/>widgets, app state, Config"] --> polarplot
+    ui --> waveformplot
     ui --> vecmath
-    polarplot["polar_plotting (polarplot::)<br/>Dear ImGui + ImPlot rendering"]
+    polarplot["polar_plotting (polarplot::)<br/>Dear ImGui + ImPlot polar rendering"]
+    waveformplot["waveform_plotting (waveform_plotting::)<br/>Dear ImGui + ImPlot time-domain rendering"]
     vecmath["vector_math (vecmath::)<br/>pure C++ vector math"]
 ```
 
-`polar_plotting` depends on nothing but Dear ImGui and ImPlot — not on
-`vector_math` or `ui` — so it's meant to be liftable wholesale into another
-project: copy `src/polar_plotting/` (its `include/polar_plotting` and `src/`
-plus its `CMakeLists.txt`), and convert your own vector/point type to its
-`polarplot::Point` at the call site, the same way `ui` does today.
+`polar_plotting` and `waveform_plotting` each depend on nothing but Dear
+ImGui and ImPlot — not on `vector_math` or `ui`, and not on each other — so
+either is meant to be liftable wholesale into another project: copy
+`src/polar_plotting/` (its `include/polar_plotting` and `src/` plus its
+`CMakeLists.txt`), or `src/waveform_plotting/` the same way, and convert
+your own vector/sample data to each module's plain types (`polarplot::Point`
+or `waveform_plotting::Trace`) at the call site, the same way `ui` does
+today.
 
 Each module lives at `src/<name>/{include/<name>/*.hpp, src/*.cpp}` with its
 own `CMakeLists.txt` exporting a `polar_plotter::<name>` alias target.
