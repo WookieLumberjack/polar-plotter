@@ -119,6 +119,30 @@ struct VecField {
     std::size_t index;
 };
 
+// Handles the two waveform-related keys, split out of apply() to keep its
+// cognitive complexity under the project's clang-tidy threshold. Returns
+// true iff `key` was one of them (handled either way, parsed or not).
+bool try_apply_waveform_field(Config& cfg, std::string_view key, std::string_view value) {
+    if (key == "waveform_frequency_hz") {
+        // Clamped rather than rejected-and-defaulted (unlike
+        // manual_ring_interval's non-positive rejection below): any
+        // hand-edited on-disk value, in or out of range, has an unambiguous
+        // in-range interpretation, so clamping preserves more of the user's
+        // intent than silently discarding it back to the 1.0 Hz default.
+        if (const auto v = parse_float(value)) {
+            cfg.waveform_frequency_hz = clamp_waveform_frequency_hz(*v);
+        }
+        return true;
+    }
+    if (key == "waveform_phase_convention") {
+        if (const auto v = parse_phase_convention(value)) {
+            cfg.waveform_phase_convention = *v;
+        }
+        return true;
+    }
+    return false;
+}
+
 void apply(Config& cfg, std::string_view key, std::string_view value) {
     constexpr std::array<VecField, 4> kVecFields{{
         {"a.x", &Config::a, 0},
@@ -138,21 +162,7 @@ void apply(Config& cfg, std::string_view key, std::string_view value) {
         {"line_width", &Config::line_width},
     }};
 
-    if (key == "waveform_frequency_hz") {
-        // Clamped rather than rejected-and-defaulted (unlike
-        // manual_ring_interval's non-positive rejection below): any
-        // hand-edited on-disk value, in or out of range, has an unambiguous
-        // in-range interpretation, so clamping preserves more of the user's
-        // intent than silently discarding it back to the 1.0 Hz default.
-        if (const auto v = parse_float(value)) {
-            cfg.waveform_frequency_hz = clamp_waveform_frequency_hz(*v);
-        }
-        return;
-    }
-    if (key == "waveform_phase_convention") {
-        if (const auto v = parse_phase_convention(value)) {
-            cfg.waveform_phase_convention = *v;
-        }
+    if (try_apply_waveform_field(cfg, key, value)) {
         return;
     }
 

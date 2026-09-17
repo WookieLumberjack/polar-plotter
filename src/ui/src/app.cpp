@@ -642,8 +642,8 @@ void App::prime_waveforms_for_screenshot() {
 
 void App::draw_waveform_panel() {
     ImGui::SetNextItemWidth(ImGui::CalcTextSize("-000.00").x +
-                            ImGui::GetStyle().FramePadding.x * 2.0F +
-                            ImGui::GetFrameHeight() * 2.0F);
+                            (ImGui::GetStyle().FramePadding.x * 2.0F) +
+                            (ImGui::GetFrameHeight() * 2.0F));
     if (ImGui::InputFloat("Frequency (Hz)", &waveform_frequency_hz_, 0.0F, 0.0F, "%.2f")) {
         waveform_frequency_hz_ = clamp_waveform_frequency_hz(waveform_frequency_hz_);
     }

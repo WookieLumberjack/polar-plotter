@@ -67,6 +67,16 @@ TEST_CASE("Lag and Lead produce mirrored signs for the same nonzero phase", "[wa
     REQUIRE(expected_lag != Catch::Approx(expected_lead));
 }
 
+namespace {
+
+void require_samples_zero(const WaveformBuffer& buffer, std::size_t count) {
+    for (std::size_t i = 0; i < count; ++i) {
+        REQUIRE(buffer.samples.at(i) == Catch::Approx(0.0F));
+    }
+}
+
+}  // namespace
+
 TEST_CASE(
     "switching visible from false to true mid-sequence starts exactly at that sample, "
     "with no replay of prior true values",
@@ -79,9 +89,7 @@ TEST_CASE(
                 static_cast<float>(i) * 0.1F);
     }
     REQUIRE(buffer.cursor == 5);
-    for (std::size_t i = 0; i < 5; ++i) {
-        REQUIRE(buffer.samples.at(i) == Catch::Approx(0.0F));
-    }
+    require_samples_zero(buffer, 5);
 
     // Now become visible: the very next sample (index 5) should be the true
     // waveform value for that tick's elapsed_seconds, not a "replay" of what
@@ -97,9 +105,7 @@ TEST_CASE(
     REQUIRE(buffer.cursor == 6);
 
     // Prior samples (0-4) remain untouched zeros -- no replay.
-    for (std::size_t i = 0; i < 5; ++i) {
-        REQUIRE(buffer.samples.at(i) == Catch::Approx(0.0F));
-    }
+    require_samples_zero(buffer, 5);
 }
 
 TEST_CASE("cursor wraps around correctly after a full buffer's worth of calls",

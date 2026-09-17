@@ -12,7 +12,6 @@
 #include "vector_math/vec2.hpp"
 
 using polarplot::MarkerColor;
-using ui::DerivedVectors;
 using ui::kNamedVectorSpecs;
 using ui::named_vector_color;
 using ui::named_vector_visible;

@@ -43,7 +43,7 @@ void draw_waveform_plot(const char* title, const std::vector<Trace>& traces) {
     ImPlot::SetupAxes("Time (s)", "Amplitude", kTimeAxisFlags, kAmplitudeAxisFlags);
     ImPlot::SetupAxisLimits(ImAxis_X1, -kWindowSeconds, 0.0, ImPlotCond_Always);
 
-    static const std::array<double, WaveformBuffer::kSampleCount> kXs = waveform_x_axis();
+    static const std::array<double, WaveformBuffer::kSampleCount> x_axis_values = waveform_x_axis();
     std::array<double, WaveformBuffer::kSampleCount> ys{};
 
     for (const Trace& trace : traces) {
@@ -56,7 +56,7 @@ void draw_waveform_plot(const char* title, const std::vector<Trace>& traces) {
         }
         ImPlotSpec spec;
         spec.LineColor = ImVec4(trace.color.r, trace.color.g, trace.color.b, trace.color.a);
-        ImPlot::PlotLine(trace.label, kXs.data(), ys.data(),
+        ImPlot::PlotLine(trace.label, x_axis_values.data(), ys.data(),
                          static_cast<int>(WaveformBuffer::kSampleCount), spec);
     }
 
