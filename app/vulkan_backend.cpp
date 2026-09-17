@@ -31,6 +31,7 @@
 #include <implot.h>
 
 #include "config_path.hpp"
+#include "dpi_scale.hpp"
 #include "font_atlas.hpp"
 #include "ppm_writer.hpp"
 #include "ui/app.hpp"
@@ -301,12 +302,16 @@ private:
     // Rebuilds the font atlas at the new effective pixel size (re-uploaded
     // to the GPU automatically -- see app::rebuild_font_atlas), then
     // re-derives ui::App's style from scratch for the new scale, exactly
-    // like the non-Windows path's glfw_content_scale_callback.
+    // like the non-Windows path's glfw_content_scale_callback. \p xscale is
+    // GLFW's raw content scale; manual_ui_scale (dpi_scale.hpp) reduces it
+    // to the scale this app should actually apply on top of whatever the
+    // backend already auto-compensates (see dpi_scale.hpp's doc comment,
+    // #111) -- a no-op on Windows.
     void on_content_scale_changed(float xscale) {
-        content_scale_ = xscale;
-        rebuild_font_atlas(xscale);
+        content_scale_ = manual_ui_scale(window_, xscale);
+        rebuild_font_atlas(content_scale_);
         if (ui_app_ != nullptr) {
-            ui_app_->set_content_scale(xscale);
+            ui_app_->set_content_scale(content_scale_);
         }
     }
 
@@ -814,10 +819,11 @@ private:
         // atlas build (below) is already correct, without waiting for a
         // content-scale-changed callback that may never fire if the window
         // opens on its eventual monitor -- same as the non-Windows path.
+        // See on_content_scale_changed's doc comment for manual_ui_scale.
         float xscale = 1.0F;
         float yscale_unused = 1.0F;
         glfwGetWindowContentScale(window_, &xscale, &yscale_unused);
-        content_scale_ = xscale;
+        content_scale_ = manual_ui_scale(window_, xscale);
         rebuild_font_atlas(content_scale_);
 
         ImGui_ImplGlfw_InitForVulkan(window_, true);

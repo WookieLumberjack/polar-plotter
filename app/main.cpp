@@ -34,6 +34,7 @@ int main() { return app::run_vulkan_app(); }
 #include <implot.h>
 
 #include "config_path.hpp"
+#include "dpi_scale.hpp"
 #include "font_atlas.hpp"
 #include "ppm_writer.hpp"
 #include "ui/app.hpp"
@@ -52,11 +53,12 @@ void glfw_error_callback(int error, const char* description) {
 // the new scale -- see ui::App::apply_current_theme's doc comment for why
 // that composition can't just scale ImGuiStyle in place.
 void glfw_content_scale_callback(GLFWwindow* window, float xscale, float /*yscale*/) {
-    app::rebuild_font_atlas(xscale);
+    const float manual_scale = app::manual_ui_scale(window, xscale);
+    app::rebuild_font_atlas(manual_scale);
 
     auto* ui_app = static_cast<ui::App*>(glfwGetWindowUserPointer(window));
     if (ui_app != nullptr) {
-        ui_app->set_content_scale(xscale);
+        ui_app->set_content_scale(manual_scale);
     }
 }
 
@@ -121,9 +123,13 @@ int main() {
     // build (below) and the very first App::set_content_scale call are
     // already correct, without waiting for a content-scale-changed callback
     // that may never fire if the window opens on its eventual monitor.
+    // manual_ui_scale (see dpi_scale.hpp) divides out whatever Dear ImGui's
+    // GLFW backend already auto-compensates for (the macOS Retina
+    // backing-store case, #111) before it reaches the font atlas / ui::App.
     float content_scale = 1.0F;
     float content_scale_y_unused = 1.0F;
     glfwGetWindowContentScale(window, &content_scale, &content_scale_y_unused);
+    const float manual_scale = app::manual_ui_scale(window, content_scale);
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -151,7 +157,7 @@ int main() {
     // scale from the start (see app::rebuild_font_atlas) rather than a fixed
     // size ImGui_ImplOpenGL3_Init would otherwise upload once and never
     // revisit.
-    app::rebuild_font_atlas(content_scale);
+    app::rebuild_font_atlas(manual_scale);
 
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glsl_version);
@@ -162,7 +168,7 @@ int main() {
         // the scale read above and re-derives the theme's style for it,
         // since the constructor above applied the theme at the default
         // (unscaled) content_scale_ of 1.0.
-        app.set_content_scale(content_scale);
+        app.set_content_scale(manual_scale);
 
         // Let the content-scale-changed callback below reach this App
         // instance without ui:: ever depending on GLFW itself.

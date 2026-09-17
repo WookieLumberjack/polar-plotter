@@ -177,6 +177,16 @@ crisp instead of blurring; and general widget sizing (padding, spacing,
 scrollbar size, and -- alongside `ui::ThemeStyle`'s `window_rounding`/
 `frame_rounding`/`grab_rounding`, scaled via `ui::scale_theme_style` --
 every other `ImGuiStyle` size field) is scaled via `ImGuiStyle::ScaleAllSizes`.
+_Not applied raw_: what GLFW reports as content scale means different things
+per platform -- on Windows it's the OS DPI multiplier with no other
+compensation happening, but on macOS Retina it's the backing-store factor
+that Dear ImGui's GLFW backend *already* auto-compensates for every frame
+(`io.DisplayFramebufferScale`), so applying it a second time here would
+double-scale the UI (#111). `app::manual_ui_scale` (`app/dpi_scale.hpp`)
+divides out whatever the backend already auto-compensates (the window's
+framebuffer-size ÷ window-size ratio) before the raw GLFW value ever reaches
+the font atlas or `ui::App::set_content_scale` -- a no-op on Windows/Linux
+(that ratio is 1.0 there), reduced to ~1.0 on macOS Retina.
 _Composition rule with Theme_: `ThemeStyle`'s rounding fields and
 content-scale scaling both ultimately land on the same `ImGuiStyle` fields,
 so style application always re-derives the full chain from scratch --
