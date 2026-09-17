@@ -248,6 +248,11 @@ private:
     // named_vector_visible -- so the two plots can never disagree about
     // what's currently shown.
     void draw_waveform_panel();
+    // The PlotInputs draw_plot() assembles for plan_plot, reduced to just the
+    // fields named_vector_visible reads (a/b are irrelevant to visibility).
+    // Shared by advance_waveforms and draw_waveform_panel so the two can
+    // never drift apart on which named vectors currently have a trace.
+    [[nodiscard]] PlotInputs waveform_visibility_inputs() const;
     // Apply one vector's this-frame draw_interactive_vector result back into
     // its VectorInput: while dragging or on the release frame, the head
     // position wins over whatever xy held before, and any pending polar text

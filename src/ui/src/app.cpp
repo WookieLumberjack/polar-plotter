@@ -590,13 +590,8 @@ void App::draw_plot() {
     apply_interactive_result(b_, result->b);
 }
 
-void App::advance_waveforms(float tick_seconds) {
-    waveform_time_seconds_ += tick_seconds;
-
-    // Same visibility inputs draw_plot() assembles for plan_plot -- only the
-    // fields named_vector_visible actually reads are populated, since a/b are
-    // irrelevant to visibility.
-    const PlotInputs visibility_inputs{
+PlotInputs App::waveform_visibility_inputs() const {
+    return PlotInputs{
         .a = {},
         .b = {},
         .derived = derived_,
@@ -607,6 +602,12 @@ void App::advance_waveforms(float tick_seconds) {
         .show_quotient_ab = show_quotient_ab_,
         .show_quotient_ba = show_quotient_ba_,
     };
+}
+
+void App::advance_waveforms(float tick_seconds) {
+    waveform_time_seconds_ += tick_seconds;
+
+    const PlotInputs visibility_inputs = waveform_visibility_inputs();
 
     constexpr float kTwoPi = 2.0F * std::numbers::pi_v<float>;
     const float angular_frequency = kTwoPi * waveform_frequency_hz_;
@@ -657,20 +658,7 @@ void App::draw_waveform_panel() {
 
     ImGui::Spacing();
 
-    // Same visibility gate as advance_waveforms/draw_plot -- only the
-    // currently-shown named vectors get a trace, so this plot can never
-    // disagree with the polar plot about what's visible.
-    const PlotInputs visibility_inputs{
-        .a = {},
-        .b = {},
-        .derived = derived_,
-        .show_sum = show_sum_,
-        .show_difference = show_difference_,
-        .show_difference_ba = show_difference_ba_,
-        .show_product = show_product_,
-        .show_quotient_ab = show_quotient_ab_,
-        .show_quotient_ba = show_quotient_ba_,
-    };
+    const PlotInputs visibility_inputs = waveform_visibility_inputs();
 
     std::vector<waveform_plotting::Trace> traces;
     traces.reserve(kNamedVectorCount);
