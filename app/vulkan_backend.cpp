@@ -138,10 +138,25 @@ SwapchainSupport query_swapchain_support(VkPhysicalDevice device, VkSurfaceKHR s
 }
 
 VkSurfaceFormatKHR choose_surface_format(const std::vector<VkSurfaceFormatKHR>& formats) {
-    for (const auto& format : formats) {
-        if (format.format == VK_FORMAT_B8G8R8A8_SRGB &&
-            format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
-            return format;
+    // UNORM, not SRGB -- matching Dear ImGui's own reference example
+    // (imgui/examples/example_glfw_vulkan/main.cpp's requestSurfaceImageFormat
+    // list, all *_UNORM). ImGui's Vulkan backend writes already gamma-encoded
+    // (sRGB) color bytes straight through with no shader-side linear->sRGB
+    // conversion; an *_SRGB swapchain image format makes the GPU apply an
+    // additional encode on write, double-gamma-correcting the whole UI --
+    // every color washes out and blacks stop being fully black. The
+    // VK_COLOR_SPACE_SRGB_NONLINEAR_KHR color space (near-universally the
+    // only one offered) is still correct to request: that's the display's
+    // output color space, orthogonal to the swapchain image's storage format.
+    constexpr std::array<VkFormat, 4> kPreferredFormats{
+        VK_FORMAT_B8G8R8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_B8G8R8_UNORM,
+        VK_FORMAT_R8G8B8_UNORM};
+    for (const VkFormat preferred : kPreferredFormats) {
+        for (const auto& format : formats) {
+            if (format.format == preferred &&
+                format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+                return format;
+            }
         }
     }
     return formats.front();
@@ -1018,12 +1033,16 @@ private:
         vkMapMemory(device_, staging_memory, 0, buffer_size, 0, &mapped_raw);
         const void* mapped = mapped_raw;
 
-        // Match choose_surface_format()'s preference: VK_FORMAT_B8G8R8A8_SRGB
-        // stores channels as B,G,R,A in memory. Any other format this
-        // (non-exhaustive) fallback might pick is assumed R,G,B,A -- true of
-        // every other commonly-exposed 8-bit UNORM/SRGB surface format.
-        const bool bgr_order = swapchain_format_ == VK_FORMAT_B8G8R8A8_SRGB ||
-                               swapchain_format_ == VK_FORMAT_B8G8R8A8_UNORM;
+        // Match choose_surface_format()'s preference: VK_FORMAT_B8G8R8A8_UNORM
+        // (its top pick in practice -- essentially every real swapchain
+        // offers it) stores channels as B,G,R,A in memory. Any other format
+        // this (non-exhaustive) fallback might pick is assumed R,G,B,A --
+        // true of every other commonly-exposed 8-bit UNORM/SRGB surface
+        // format. VK_FORMAT_B8G8R8A8_SRGB is included too even though
+        // choose_surface_format() no longer prefers it, purely for
+        // robustness against a future change to that preference.
+        const bool bgr_order = swapchain_format_ == VK_FORMAT_B8G8R8A8_UNORM ||
+                               swapchain_format_ == VK_FORMAT_B8G8R8A8_SRGB;
 
         const auto* pixels = static_cast<const std::uint8_t*>(mapped);
         const auto pixel_count = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
