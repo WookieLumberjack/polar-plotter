@@ -56,8 +56,13 @@ TEST_CASE("Lag and Lead produce mirrored signs for the same nonzero phase", "[wa
     const float expected_lag = kAmplitude * std::cos((kOmega * kElapsed) - kPhaseRad);
     const float expected_lead = kAmplitude * std::cos((kOmega * kElapsed) + kPhaseRad);
 
-    REQUIRE(lag_buffer.samples.at(0) == Catch::Approx(expected_lag));
-    REQUIRE(lead_buffer.samples.at(0) == Catch::Approx(expected_lead));
+    // expected_lag lands near a cosine zero-crossing (~-0.0056), where
+    // std::cos's last-bit rounding differs enough between platforms' libm
+    // that Approx's default *relative* epsilon is too tight; an absolute
+    // margin is the right tolerance for a value this close to zero.
+    constexpr float kAbsoluteMargin = 1e-4F;
+    REQUIRE(lag_buffer.samples.at(0) == Catch::Approx(expected_lag).margin(kAbsoluteMargin));
+    REQUIRE(lead_buffer.samples.at(0) == Catch::Approx(expected_lead).margin(kAbsoluteMargin));
     // Not the trivial phase=0 case, so Lag/Lead must actually differ.
     REQUIRE(expected_lag != Catch::Approx(expected_lead));
 }
