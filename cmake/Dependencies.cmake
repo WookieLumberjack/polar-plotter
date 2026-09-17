@@ -43,6 +43,64 @@ FetchContent_MakeAvailable(glfw Catch2)
 list(APPEND CMAKE_MODULE_PATH "${catch2_SOURCE_DIR}/extras")
 
 # ---------------------------------------------------------------------------
+# Vulkan-Headers + volk - Windows-only Vulkan/ImGui backend (#99/#100/#96).
+#
+# Fetched (and the Dear ImGui library below built against them) unconditionally
+# -- not gated on WIN32 -- rather than following the GLFW X11/Wayland
+# platform-conditional pattern above: app/vulkan_backend.cpp, and Dear ImGui's
+# own imgui_impl_vulkan.cpp backend (added to the `imgui` target below), are
+# both compiled on every platform (see app/CMakeLists.txt) purely so they're
+# covered by clang-format/clang-tidy and by a real warnings-as-errors Clang
+# compile against these headers on Linux/macOS too, even though
+# app::run_vulkan_app() is only ever called from the `#ifdef _WIN32` branch in
+# app/main.cpp. This costs a small extra fetch/compile on Linux/macOS but
+# changes nothing about their runtime behavior (dead code; volk's dynamic
+# loader is never invoked there) -- see
+# docs/adr/0004-windows-vulkan-hard-cutover.md.
+#
+# Fetched ahead of the Dear ImGui section below (rather than after, as in
+# #99) because the `imgui` target now links against `volk` and needs its
+# headers visible while compiling imgui_impl_vulkan.cpp.
+#
+# No Vulkan SDK is required to build or run: GLFW dynamically loads the
+# Vulkan loader (vulkan-1.dll on Windows) at runtime with no link-time import
+# library, and volk (MIT) resolves the remaining instance/device function
+# pointers the same way Dear ImGui's own example_glfw_vulkan does.
+# Vulkan-Headers (Apache-2.0 OR MIT) supplies the header-only type/constant
+# declarations volk and app code build against. Both are pinned to the same
+# `vulkan-sdk-1.3.296.0` tag so their Vulkan API versions line up.
+# ---------------------------------------------------------------------------
+FetchContent_Declare(vulkan_headers
+    GIT_REPOSITORY https://github.com/KhronosGroup/Vulkan-Headers.git
+    GIT_TAG vulkan-sdk-1.3.296.0
+    GIT_SHALLOW TRUE
+    SYSTEM)
+
+# volk's own CMakeLists tries to discover a system Vulkan SDK
+# (find_package(Vulkan) / $VULKAN_SDK) to find headers when
+# VOLK_PULL_IN_VULKAN is ON; this project deliberately has neither, so that
+# is turned off and volk is pointed at the Vulkan-Headers target fetched
+# above instead (below, after FetchContent_MakeAvailable).
+set(VOLK_PULL_IN_VULKAN OFF CACHE BOOL "" FORCE)
+set(VOLK_INSTALL OFF CACHE BOOL "" FORCE)
+
+FetchContent_Declare(volk
+    GIT_REPOSITORY https://github.com/zeux/volk.git
+    GIT_TAG vulkan-sdk-1.3.296.0
+    GIT_SHALLOW TRUE
+    SYSTEM)
+
+FetchContent_MakeAvailable(vulkan_headers volk)
+
+target_link_libraries(volk PUBLIC Vulkan::Headers)
+target_link_libraries(volk_headers INTERFACE Vulkan::Headers)
+
+# Vendored code: not our warning policy.
+if(NOT MSVC)
+    target_compile_options(volk PRIVATE -w)
+endif()
+
+# ---------------------------------------------------------------------------
 # Dear ImGui - no upstream CMake, so we compile it ourselves.
 #
 # Pinned to the `docking` branch's v1.92.9b-docking tag (not master's plain
@@ -66,13 +124,32 @@ add_library(imgui STATIC
     ${imgui_SOURCE_DIR}/imgui_widgets.cpp
     ${imgui_SOURCE_DIR}/imgui_demo.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
-    ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp)
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+    # Windows-only at runtime (see app/vulkan_backend.cpp); compiled on every
+    # platform for the same type-check-as-dead-code reason as
+    # vulkan_backend.cpp itself (see the Vulkan-Headers/volk section above).
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp)
 target_include_directories(imgui SYSTEM PUBLIC
     ${imgui_SOURCE_DIR}
     ${imgui_SOURCE_DIR}/backends)
-target_link_libraries(imgui PUBLIC glfw)
+target_link_libraries(imgui PUBLIC glfw volk)
 target_compile_features(imgui PUBLIC cxx_std_23)
 add_library(imgui::imgui ALIAS imgui)
+
+# Widen ImDrawIdx to 32-bit (default is 16-bit): ImPlot's docs warn that a
+# draw list needing more than 65,536 indices can silently corrupt rendering
+# with the default width. Set once here, PUBLIC so it propagates identically
+# to every consumer (implot, ui, app) -- required for ABI consistency across
+# every translation unit that touches ImDrawList. See #97.
+target_compile_definitions(imgui PUBLIC
+    IMGUI_USER_CONFIG="${CMAKE_SOURCE_DIR}/cmake/imgui_user_config.h"
+    # Pairs imgui_impl_vulkan.cpp with volk for runtime Vulkan function
+    # loading (no link-time import library, no Vulkan SDK) -- the same
+    # pairing Dear ImGui's own example_glfw_vulkan uses. PUBLIC so every
+    # consumer that includes imgui_impl_vulkan.h (app/vulkan_backend.cpp)
+    # sees the same macro the backend itself was compiled with -- imgui_impl_
+    # vulkan.h's declarations differ slightly based on this define. See #100.
+    IMGUI_IMPL_VULKAN_USE_VOLK)
 
 # Vendored code: not our warning policy.
 if(NOT MSVC)

@@ -1,11 +1,21 @@
-// Desktop host: creates a GLFW window + OpenGL3 context, wires up Dear ImGui and
-// ImPlot, and runs ui::App once per frame. Nothing project-specific lives here.
+// Desktop host. On Windows this runs the full ui::App UI through a Vulkan
+// rendering pipeline (see vulkan_backend.hpp/.cpp and #99/#100/#96) instead
+// of the OpenGL/ImGui path below -- the OpenGL backend stalls while the
+// window is maximized on Windows 11 (see docs/adr/0004). Linux and macOS are
+// untouched: they still create a GLFW window + OpenGL3 context, wire up Dear
+// ImGui and ImPlot, and run ui::App once per frame, exactly as before.
+
+#ifdef _WIN32
+
+#include "vulkan_backend.hpp"
+
+int main() { return app::run_vulkan_app(); }
+
+#else
 
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
-#include <filesystem>
-#include <fstream>
 #include <vector>
 
 // Only core GL 1.1 entry points (glViewport/glClear/...) are used directly here;
@@ -23,31 +33,31 @@
 #include <imgui_impl_opengl3.h>
 #include <implot.h>
 
-#include "jetbrains_mono_medium.h"
+#include "config_path.hpp"
+#include "font_atlas.hpp"
+#include "ppm_writer.hpp"
 #include "ui/app.hpp"
 
 namespace {
-
-// Fixed size for the app's one and only font, chosen for this app's widget
-// density (compact input rows, plot labels, tables) at the default window
-// size. No font-size UI: see #60.
-constexpr float kFontSizePixels = 18.0F;
 
 void glfw_error_callback(int error, const char* description) {
     std::fprintf(stderr, "GLFW error %d: %s\n", error, description);
 }
 
-// Write an RGB framebuffer (top-down) as a binary PPM (P6). Chosen for zero
-// dependencies; convert to PNG with e.g. `magick shot.ppm shot.png`.
-bool write_ppm(const std::filesystem::path& path, int width, int height,
-               const std::vector<std::uint8_t>& rgb) {
-    std::ofstream out(path, std::ios::binary);
-    if (!out) {
-        return false;
+// GLFWwindowcontentscalefun: fires on startup's first PollEvents and again
+// whenever the window moves to a monitor with a different content scale
+// (e.g. dragged from a 100% to a 150% display). Rebuilds the font atlas at
+// the new effective pixel size (re-uploaded to the GPU automatically -- see
+// app::rebuild_font_atlas), then re-derives ui::App's style from scratch for
+// the new scale -- see ui::App::apply_current_theme's doc comment for why
+// that composition can't just scale ImGuiStyle in place.
+void glfw_content_scale_callback(GLFWwindow* window, float xscale, float /*yscale*/) {
+    app::rebuild_font_atlas(xscale);
+
+    auto* ui_app = static_cast<ui::App*>(glfwGetWindowUserPointer(window));
+    if (ui_app != nullptr) {
+        ui_app->set_content_scale(xscale);
     }
-    out << "P6\n" << width << ' ' << height << "\n255\n";
-    out.write(reinterpret_cast<const char*>(rgb.data()), static_cast<std::streamsize>(rgb.size()));
-    return out.good();
 }
 
 // Read the GL back buffer into a top-down RGB buffer.
@@ -71,16 +81,6 @@ std::vector<std::uint8_t> read_framebuffer(int width, int height) {
     return rgb;
 }
 
-std::filesystem::path config_path() {
-    if (const char* xdg = std::getenv("XDG_CONFIG_HOME")) {
-        return std::filesystem::path(xdg) / "polar-plotter" / "inputs.conf";
-    }
-    if (const char* home = std::getenv("HOME")) {
-        return std::filesystem::path(home) / ".config" / "polar-plotter" / "inputs.conf";
-    }
-    return {"polar-plotter.conf"};
-}
-
 }  // namespace
 
 int main() {
@@ -100,6 +100,11 @@ int main() {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
+    // Have GLFW itself resize the window to match a monitor's content scale
+    // (e.g. a 150%-scale Windows display) rather than leaving it at its
+    // requested logical size -- must be set before window creation. See
+    // CONTEXT.md's "content scale" entry.
+    glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE);
     if (screenshot_mode) {
         glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
     }
@@ -111,6 +116,14 @@ int main() {
     }
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);
+
+    // Read the window's initial content scale so the very first font atlas
+    // build (below) and the very first App::set_content_scale call are
+    // already correct, without waiting for a content-scale-changed callback
+    // that may never fire if the window opens on its eventual monitor.
+    float content_scale = 1.0F;
+    float content_scale_y_unused = 1.0F;
+    glfwGetWindowContentScale(window, &content_scale, &content_scale_y_unused);
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -134,15 +147,28 @@ int main() {
     // JetBrains Mono Medium, embedded at build time (binary_to_compressed_c
     // over the fetched TTF, see cmake/Dependencies.cmake) -- no
     // AddFontFromFileTTF / runtime file path loading. This is the app's
-    // default and only font (#60).
-    ImGui::GetIO().Fonts->AddFontFromMemoryCompressedTTF(
-        JetBrainsMonoMedium_compressed_data, JetBrainsMonoMedium_compressed_size, kFontSizePixels);
+    // default and only font (#60), built at the window's actual content
+    // scale from the start (see app::rebuild_font_atlas) rather than a fixed
+    // size ImGui_ImplOpenGL3_Init would otherwise upload once and never
+    // revisit.
+    app::rebuild_font_atlas(content_scale);
 
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glsl_version);
 
     {
-        ui::App app(config_path());
+        ui::App app(app::config_path());
+        // See ui::App::set_content_scale's doc comment: this both records
+        // the scale read above and re-derives the theme's style for it,
+        // since the constructor above applied the theme at the default
+        // (unscaled) content_scale_ of 1.0.
+        app.set_content_scale(content_scale);
+
+        // Let the content-scale-changed callback below reach this App
+        // instance without ui:: ever depending on GLFW itself.
+        glfwSetWindowUserPointer(window, &app);
+        glfwSetWindowContentScaleCallback(window, glfw_content_scale_callback);
+
         int frame = 0;
 
         while (glfwWindowShouldClose(window) == GLFW_FALSE) {
@@ -170,8 +196,8 @@ int main() {
             // grab the framebuffer and quit.
             if (screenshot_mode && ++frame >= 8) {
                 glFinish();
-                if (!write_ppm(shot_path, display_w, display_h,
-                               read_framebuffer(display_w, display_h))) {
+                if (!app::write_ppm(shot_path, display_w, display_h,
+                                    read_framebuffer(display_w, display_h))) {
                     std::fprintf(stderr, "failed to write screenshot to %s\n", shot_path);
                     return EXIT_FAILURE;
                 }
@@ -193,3 +219,5 @@ int main() {
     glfwTerminate();
     return EXIT_SUCCESS;
 }
+
+#endif  // _WIN32

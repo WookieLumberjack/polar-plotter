@@ -110,6 +110,12 @@ Convert the PPM to a viewable format with ImageMagick:
 magick out.ppm out.png
 ```
 
+On Windows, the same env var produces the same PPM output via a Vulkan
+swapchain-image readback instead of `glReadPixels` (see
+`app/vulkan_backend.cpp` and `docs/adr/0004-windows-vulkan-hard-cutover.md`)
+-- the env var, output format, and frame-count-then-exit behavior are
+identical across both backends.
+
 ## Testing
 
 Run the Catch2 test suite via CTest:
@@ -191,6 +197,9 @@ Bundled dependencies keep their own licenses: [Dear
 ImGui](https://github.com/ocornut/imgui) and
 [ImPlot](https://github.com/epezent/implot) (MIT), [GLFW](https://www.glfw.org/)
 (zlib/libpng), [Catch2](https://github.com/catchorg/Catch2) (Boost Software
-License 1.0, test-only — not part of the built application), and
+License 1.0, test-only — not part of the built application),
 [JetBrains Mono](https://www.jetbrains.com/lp/mono/) (SIL Open Font License
-1.1), embedded into the binary as the app's default font.
+1.1), embedded into the binary as the app's default font, and — for the
+Windows Vulkan rendering backend —
+[Vulkan-Headers](https://github.com/KhronosGroup/Vulkan-Headers) (Apache-2.0
+OR MIT) and [volk](https://github.com/zeux/volk) (MIT).

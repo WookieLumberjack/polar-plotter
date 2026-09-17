@@ -1,0 +1,44 @@
+#ifndef APP_VULKAN_BACKEND_HPP
+#define APP_VULKAN_BACKEND_HPP
+
+namespace app {
+
+// Windows-only Vulkan-backed application host (#100, building on #99's
+// clear-color spike, part of #96): stands up a full Vulkan pipeline
+// (instance, physical/logical device, swapchain, render pass, framebuffers,
+// command buffers, sync objects, and the descriptor pool Dear ImGui's Vulkan
+// backend requires) via GLFW's Vulkan window-surface support, then runs the
+// real application -- ui::App, ImGui, ImPlot -- through it every frame,
+// recreating the swapchain correctly across resize/maximize. This replaces
+// the earlier bare-clear-color spike now that #99 has confirmed switching
+// Windows off OpenGL avoids the maximize-time stall described in #96.
+//
+// This is a hard cutover with no OpenGL fallback: see
+// docs/adr/0004-windows-vulkan-hard-cutover.md. If Vulkan initialization
+// fails, or no suitable device is found, this prints an actionable message
+// to stderr and returns a failure exit code rather than falling back.
+//
+// Also honors POLAR_PLOTTER_SCREENSHOT (#101), the same headless-capture env
+// var main.cpp's OpenGL path supports: when set, renders a few frames to a
+// hidden window, copies the current swapchain image to a host-visible
+// staging buffer, and writes it out as a PPM via the shared app::write_ppm
+// (ppm_writer.hpp) -- identical output format and frame-count-then-exit
+// behavior to the OpenGL path, just reached via a Vulkan image readback
+// instead of glReadPixels.
+//
+// Only ever called on Windows (see the `#ifdef _WIN32` branch in
+// app/main.cpp); Linux and macOS keep the existing GLFW + OpenGL3 + ImGui/
+// ImPlot path in main.cpp, completely untouched by this file. This
+// translation unit is nonetheless compiled on every platform (see
+// app/CMakeLists.txt) purely so it's covered by this project's
+// clang-format/clang-tidy checks and by a real -Wall -Wextra -Wpedantic
+// -Wconversion -Werror Clang compile against the real Vulkan-Headers/volk/
+// Dear ImGui Vulkan backend types -- it is simply never invoked outside
+// Windows.
+//
+// Returns an exit code suitable for returning directly from main().
+int run_vulkan_app();
+
+}  // namespace app
+
+#endif  // APP_VULKAN_BACKEND_HPP

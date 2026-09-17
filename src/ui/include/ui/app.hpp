@@ -42,6 +42,17 @@ public:
     /// this after render() and closes the window when it's true.
     [[nodiscard]] bool want_exit() const { return want_exit_; }
 
+    /// Record the window's current content scale (1.0 = 100%, 1.5 = 150%,
+    /// ...) and immediately reapply the current theme's style scaled to it.
+    /// App has no idea what a "content scale" is beyond this plain float --
+    /// reading it from GLFW and deciding when it changed is entirely the
+    /// host's job (app/main.cpp, via glfwGetWindowContentScale and
+    /// glfwSetWindowContentScaleCallback); this just keeps ImGuiStyle's
+    /// rounding consistent with whatever the host last reported. See
+    /// apply_current_theme() for why this always re-derives style from
+    /// scratch rather than scaling in place.
+    void set_content_scale(float content_scale);
+
 private:
     struct VectorInput {
         std::array<float, 2> xy{0.0F, 0.0F};
@@ -125,12 +136,30 @@ private:
     // ImGui::GetStyle() once on construction and again whenever the Theme
     // menu changes it (see draw_menu_bar) -- never reapplied every frame.
     Theme theme_{Theme::kSlate};
+    // Window content scale last reported by the host (1.0 until
+    // set_content_scale() is called -- see its doc comment). Purely a
+    // multiplier as far as App is concerned; App never talks to GLFW.
+    float content_scale_{1.0F};
     // See want_exit().
     bool want_exit_{false};
 
-    // Applies theme_'s style to ImGui::GetStyle(). Called once from both
-    // constructors and again from draw_menu_bar whenever the selection
-    // changes.
+    // Re-derives theme_'s style from scratch -- theme_style(theme_) ->
+    // scale_theme_style(..., content_scale_) -> apply_theme(...) -- and
+    // pushes it into ImGui::GetStyle(). Called from both constructors, from
+    // draw_menu_bar whenever the Theme selection changes, and from
+    // set_content_scale whenever the host reports a new content scale.
+    //
+    // Deliberately never caches or compounds: ThemeStyle's rounding fields
+    // and content-scale scaling both mutate the same ImGuiStyle fields
+    // (WindowRounding/FrameRounding/GrabRounding), so e.g. scaling
+    // ImGui::GetStyle() in place and then switching themes would silently
+    // clobber the scaled rounding back to the new theme's fixed, unscaled
+    // values (or the reverse: applying a theme after scaling without
+    // re-scaling would leave stale, wrong-DPI rounding). Recomputing the
+    // full theme_style -> scale_theme_style -> apply_theme chain from the
+    // two source-of-truth members (theme_, content_scale_) every single time
+    // makes that ordering bug structurally impossible rather than something
+    // that has to be remembered at every call site.
     void apply_current_theme() const;
 
     // Full-viewport invisible host window + ImGui::DockSpace(); builds the

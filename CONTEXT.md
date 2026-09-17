@@ -160,3 +160,33 @@ to `ImGui::GetStyle()` once when the selection changes, not every frame.
 look exactly, so it is never a visual regression. `kSlate`/`kMidnight` are
 dark with sharp/default corner rounding; `kPaper`/`kNordLight`/`kMint` are
 light with noticeably larger rounding.
+
+**Content scale**:
+The OS/monitor's display-scale factor (1.0 = 100%, 1.5 = 150%, ...), read
+from GLFW (`glfwGetWindowContentScale`) by `app/`'s host glue --
+`app/main.cpp` on Linux/macOS (OpenGL) and `app/vulkan_backend.cpp` on
+Windows (Vulkan) each read it the same way -- and reacted to at runtime via
+`glfwSetWindowContentScaleCallback` (e.g. a window dragged from a 100% to a
+150%-scale monitor). A pure `app/`/windowing concept -- `ui` never
+talks to GLFW (see `CLAUDE.md`'s module table) and knows content scale only
+as the plain `float` passed to `ui::App::set_content_scale`. Drives two
+independent effects: the font atlas is rebuilt (cleared, the embedded
+JetBrains Mono font re-added at `base_pixel_size × content_scale`, rebuilt,
+and re-uploaded to the GPU) rather than linearly stretched, so text stays
+crisp instead of blurring; and general widget sizing (padding, spacing,
+scrollbar size, and -- alongside `ui::ThemeStyle`'s `window_rounding`/
+`frame_rounding`/`grab_rounding`, scaled via `ui::scale_theme_style` --
+every other `ImGuiStyle` size field) is scaled via `ImGuiStyle::ScaleAllSizes`.
+_Composition rule with Theme_: `ThemeStyle`'s rounding fields and
+content-scale scaling both ultimately land on the same `ImGuiStyle` fields,
+so style application always re-derives the full chain from scratch --
+reset `ImGuiStyle` to its default, `ScaleAllSizes(content_scale)`, then
+`theme_style(selected)` → `scale_theme_style(..., content_scale)` →
+`apply_theme(...)` -- on startup, on every Theme-menu selection, and on
+every content-scale-change callback, rather than scaling `ImGuiStyle` in
+place or caching an already-scaled `ThemeStyle`. Recomputing from the two
+sources of truth (the selected `Theme`, the last-reported content scale)
+every time, from a fresh default `ImGuiStyle`, is what makes it structurally
+impossible for a theme switch (or a second scale-change callback) to
+compound or clobber previously-applied scaling/rounding -- see
+`ui::App::apply_current_theme`'s doc comment.
