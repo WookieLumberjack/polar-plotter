@@ -7,11 +7,20 @@
 #include "polar_plotting/polar_plot.hpp"
 #include "ui/angle_convention.hpp"
 #include "ui/derived_vectors.hpp"
+#include "ui/named_vector_spec.hpp"
 #include "ui/plot_plan.hpp"
 #include "ui/polar_display.hpp"
 #include "ui/theme.hpp"
+#include "waveform_plotting/waveform_buffer.hpp"
 
 namespace ui {
+
+/// Fixed sample cadence (Hz) the waveform buffers advance at -- an alias of
+/// waveform_plotting::kSampleRateHz, re-exported here purely so app/main.cpp
+/// (which must not depend on waveform_plotting directly -- see CLAUDE.md's
+/// module table) can size its fixed-tick accumulator without reaching past
+/// ui. See \ref App::advance_waveforms.
+inline constexpr float kWaveformTickHz = waveform_plotting::kSampleRateHz;
 
 /// The application's UI state and per-frame rendering. Owns no windowing or
 /// graphics resources -- the host (app/main.cpp) creates the ImGui/ImPlot
@@ -52,6 +61,31 @@ public:
     /// apply_current_theme() for why this always re-derives style from
     /// scratch rather than scaling in place.
     void set_content_scale(float content_scale);
+
+    /// Advance every named vector's waveform buffer by exactly one sample,
+    /// mirroring set_content_scale's plain-value host->ui boundary crossing
+    /// (a plain float in, no GLFW/waveform_plotting types visible to the
+    /// caller beyond what app.hpp already re-exports): app/main.cpp reads the
+    /// wall clock (GLFW-specific, entirely outside ui's knowledge), reduces
+    /// it to a plain elapsed-seconds value, and calls this once per fixed
+    /// 1/kWaveformTickHz-second tick -- accumulating each frame's real
+    /// elapsed time and calling this the appropriate whole number of times,
+    /// carrying over any fractional remainder to the next frame -- so the
+    /// waveform's shape stays independent of render frame rate (#105/#108).
+    /// \p tick_seconds is normally exactly 1/kWaveformTickHz; it's added to
+    /// an internally-tracked running simulated-time total used to evaluate
+    /// every currently-shown named vector's cos(...) sample this tick, with
+    /// each buffer's `visible` input tracking the exact same show-flags the
+    /// polar plot itself uses (see named_vector_visible).
+    void advance_waveforms(float tick_seconds);
+
+    /// Screenshot-mode-only: advances every waveform buffer by a full
+    /// buffer's worth of ticks (WaveformBuffer::kSampleCount, each
+    /// 1/kWaveformTickHz apart) so the buffers are completely repopulated
+    /// with deterministic values before a POLAR_PLOTTER_SCREENSHOT capture --
+    /// see app/main.cpp. Equivalent to calling
+    /// advance_waveforms(1/kWaveformTickHz) that many times in a row.
+    void prime_waveforms_for_screenshot();
 
 private:
     struct VectorInput {
@@ -143,6 +177,25 @@ private:
     // See want_exit().
     bool want_exit_{false};
 
+    // One waveform sample buffer per named-vector slot (#105/#108), in the
+    // same fixed order as kNamedVectorSpecs -- allocated once here, never
+    // resized. Written exclusively by advance_waveforms (via
+    // waveform_plotting::advance); draw_waveform_panel only reads them.
+    std::array<waveform_plotting::WaveformBuffer, kNamedVectorCount> waveform_buffers_{};
+    // Shared frequency (Hz) and Lag/Lead convention for every waveform trace
+    // -- see ui::Config::waveform_frequency_hz/waveform_phase_convention,
+    // which these mirror (loaded/saved exactly like every other persisted
+    // field). Entirely independent of rotation_direction_/
+    // measurement_convention_ above; never let the two interact.
+    float waveform_frequency_hz_{1.0F};
+    waveform_plotting::PhaseConvention waveform_phase_convention_{
+        waveform_plotting::PhaseConvention::kLag};
+    // Running simulated elapsed time fed to waveform_plotting::advance as its
+    // own elapsed_seconds parameter -- monotonically increasing across every
+    // advance_waveforms call, independent of wall-clock/render time beyond
+    // what's accumulated into it one tick at a time.
+    float waveform_time_seconds_{0.0F};
+
     // Re-derives theme_'s style from scratch -- theme_style(theme_) ->
     // scale_theme_style(..., content_scale_) -> apply_theme(...) -- and
     // pushes it into ImGui::GetStyle(). Called from both constructors, from
@@ -188,6 +241,13 @@ private:
     // updated position (and discards any in-progress Amplitude/Phase text
     // edit) straight back into a_/b_.
     void draw_plot();
+    // The waveform panel's frequency input, Phase convention (Lag/Lead)
+    // toggle, and the ImPlot waveform plot itself (#105/#108). Reads (never
+    // writes) a_/b_/derived_ and the show_* toggles -- the same visibility
+    // ui::plan_plot already uses for the polar plot, via
+    // named_vector_visible -- so the two plots can never disagree about
+    // what's currently shown.
+    void draw_waveform_panel();
     // Apply one vector's this-frame draw_interactive_vector result back into
     // its VectorInput: while dragging or on the release frame, the head
     // position wins over whatever xy held before, and any pending polar text

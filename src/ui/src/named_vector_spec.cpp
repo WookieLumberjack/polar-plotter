@@ -11,7 +11,7 @@ constexpr float channel(int value_0_255) { return static_cast<float>(value_0_255
 
 }  // namespace
 
-const std::array<NamedVectorSpec, 8> kNamedVectorSpecs{{
+const std::array<NamedVectorSpec, kNamedVectorCount> kNamedVectorSpecs{{
     {"A", {channel(76), channel(114), channel(176), 1.0F}, nullptr, nullptr},
     {"B", {channel(221), channel(132), channel(82), 1.0F}, nullptr, nullptr},
     {"A - B",
@@ -51,6 +51,13 @@ polarplot::MarkerColor named_vector_color(const char* label) {
 
     assert(false && "named_vector_color: label is not one of the 8 named vectors");
     return {};
+}
+
+bool named_vector_visible(const NamedVectorSpec& spec, const PlotInputs& inputs) {
+    if (spec.accessor == nullptr) {
+        return true;
+    }
+    return (inputs.*spec.toggle) && (inputs.derived.*spec.accessor).has_value();
 }
 
 }  // namespace ui

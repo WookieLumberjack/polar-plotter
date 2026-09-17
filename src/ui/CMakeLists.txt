@@ -7,6 +7,7 @@ add_library(ui STATIC
     src/plot_plan.cpp
     src/polar_display.cpp
     src/theme.cpp
+    src/waveform_controls.cpp
     src/zero_direction.cpp)
 
 target_include_directories(ui PUBLIC
@@ -18,6 +19,7 @@ target_link_libraries(ui
     PUBLIC
         polar_plotter::vector_math
         polar_plotter::polar_plotting
+        polar_plotter::waveform_plotting
         imgui::imgui
     PRIVATE
         polar_plotter::warnings)

@@ -2,6 +2,7 @@
 #define UI_NAMED_VECTOR_SPEC_HPP
 
 #include <array>
+#include <cstddef>
 #include <optional>
 
 #include "polar_plotting/polar_plot.hpp"
@@ -32,13 +33,18 @@ struct NamedVectorSpec {
     bool PlotInputs::* toggle{nullptr};
 };
 
+/// Number of named vectors (see \ref kNamedVectorSpecs). Also sizes
+/// ui::App's parallel array of waveform_plotting::WaveformBuffer, one per
+/// slot (#108) -- named rather than repeating a bare `8` at each use site.
+inline constexpr std::size_t kNamedVectorCount = 8;
+
 /// The 8 named vectors' fixed identity, in a fixed order: A, B, then the 6
 /// derived vectors in the same order documented on
 /// \c PlotPlan::derived_vectors' push-order contract (A - B, A + B, B - A,
 /// A x B, A / B, B / A). \c ui::plan_plot's derived-vector collection and
 /// \c ui::auto_fit_extent's magnitude loop both iterate this directly instead
 /// of each hand-writing six per-vector blocks.
-extern const std::array<NamedVectorSpec, 8> kNamedVectorSpecs;
+extern const std::array<NamedVectorSpec, kNamedVectorCount> kNamedVectorSpecs;
 
 /// The fixed color for the named vector labelled \p label, sourced from
 /// \ref kNamedVectorSpecs. \p label must be one of the 8 exact strings used
@@ -47,6 +53,16 @@ extern const std::array<NamedVectorSpec, 8> kNamedVectorSpecs;
 /// silently defaulted). A and B's colors are unchanged from today's ImPlot
 /// auto-cycled values. Pure function -- the test seam for this mapping.
 [[nodiscard]] polarplot::MarkerColor named_vector_color(const char* label);
+
+/// Whether \p spec's named vector is currently shown, using the exact same
+/// gate \c ui::plan_plot's collect_derived_vectors/auto_fit_extent already
+/// use internally (toggle on AND, for the two quotients, a defined value) --
+/// the single source of truth for "is this named vector currently shown",
+/// reused by anything else (e.g. the waveform panel, #108) that needs to
+/// agree with the polar plot about what's visible rather than keeping a
+/// second, parallel notion of visibility. A and B (\c spec.accessor ==
+/// nullptr) are always shown. Pure function -- the test seam for this gate.
+[[nodiscard]] bool named_vector_visible(const NamedVectorSpec& spec, const PlotInputs& inputs);
 
 }  // namespace ui
 

@@ -169,10 +169,42 @@ int main() {
         glfwSetWindowUserPointer(window, &app);
         glfwSetWindowContentScaleCallback(window, glfw_content_scale_callback);
 
+        // POLAR_PLOTTER_SCREENSHOT determinism (#105/#108): fill every
+        // waveform buffer's full 5 second window with real simulated values
+        // before the first frame is even drawn, rather than letting the
+        // capture race real wall-clock time (which would make the captured
+        // waveform image non-deterministic run-to-run).
+        if (screenshot_mode) {
+            app.prime_waveforms_for_screenshot();
+        }
+
         int frame = 0;
+        // Wall-clock-to-fixed-tick accumulator (#105/#108): advance_waveforms
+        // must be called at a fixed ui::kWaveformTickHz cadence, decoupled
+        // from render frame rate, so the waveform's shape never warps/jitters
+        // when frame rate fluctuates -- glfwGetTime() is read here (GLFW-
+        // specific host glue) and reduced to a plain elapsed-seconds value
+        // before crossing into ui::App, mirroring set_content_scale's boundary
+        // crossing. Skipped entirely in screenshot mode: the buffers are
+        // already fully (and deterministically) primed above, and a headless
+        // capture shouldn't also advance them by whatever wall-clock time
+        // elapses while rendering the handful of screenshot frames.
+        double last_time = glfwGetTime();
+        double waveform_accumulator = 0.0;
+        constexpr double kWaveformTickSeconds = 1.0 / static_cast<double>(ui::kWaveformTickHz);
 
         while (glfwWindowShouldClose(window) == GLFW_FALSE) {
             glfwPollEvents();
+
+            if (!screenshot_mode) {
+                const double now = glfwGetTime();
+                waveform_accumulator += now - last_time;
+                last_time = now;
+                while (waveform_accumulator >= kWaveformTickSeconds) {
+                    app.advance_waveforms(static_cast<float>(kWaveformTickSeconds));
+                    waveform_accumulator -= kWaveformTickSeconds;
+                }
+            }
 
             ImGui_ImplOpenGL3_NewFrame();
             ImGui_ImplGlfw_NewFrame();

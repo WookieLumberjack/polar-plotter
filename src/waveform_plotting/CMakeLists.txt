@@ -1,5 +1,6 @@
 add_library(waveform_plotting STATIC
-    src/waveform_buffer.cpp)
+    src/waveform_buffer.cpp
+    src/draw_waveform.cpp)
 
 target_include_directories(waveform_plotting PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include)

@@ -25,6 +25,15 @@ enum class PhaseConvention : std::uint8_t {
     kLead,
 };
 
+/// Fixed sample cadence (Hz) \ref advance is meant to be called at, decoupled
+/// from render frame rate -- 1000 samples (WaveformBuffer::kSampleCount) at
+/// this rate is exactly a fixed 5 second window. The host loop (app/main.cpp,
+/// via ui::App::advance_waveforms) accumulates real elapsed time and calls
+/// \ref advance this many times per simulated second, carrying over any
+/// fractional remainder. Also drives \c waveform_plotting::draw_waveform_plot's
+/// x-axis spacing, so the two can never disagree about the buffer's time span.
+inline constexpr float kSampleRateHz = 200.0F;
+
 /// A fixed-size ring buffer of waveform samples plus its write cursor. Plain
 /// data, constructible directly in test code with no ImGui/ImPlot/GLFW
 /// context. \ref advance is the only way samples are written.

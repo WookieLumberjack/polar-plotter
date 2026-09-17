@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <imgui.h>
 #include <imgui_internal.h>  // DockBuilder* -- no public API for the first-run default layout.
@@ -20,8 +21,11 @@
 #include "ui/plot_plan.hpp"
 #include "ui/polar_display.hpp"
 #include "ui/theme.hpp"
+#include "ui/waveform_controls.hpp"
 #include "ui/zero_direction.hpp"
 #include "vector_math/vec2.hpp"
+#include "waveform_plotting/draw_waveform.hpp"
+#include "waveform_plotting/waveform_buffer.hpp"
 
 namespace ui {
 namespace {
@@ -212,6 +216,8 @@ App::App(std::filesystem::path config_path) : config_path_(std::move(config_path
         auto_scale_ = cfg->auto_scale;
         manual_ring_interval_ = cfg->manual_ring_interval;
         theme_ = cfg->theme;
+        waveform_frequency_hz_ = cfg->waveform_frequency_hz;
+        waveform_phase_convention_ = cfg->waveform_phase_convention;
     }
     // a_/b_ may have just been overwritten from cfg above, so derived_ is
     // (re)computed here rather than relying on the member initializer used by
@@ -239,6 +245,8 @@ void App::save() const {
         .auto_scale = auto_scale_,
         .manual_ring_interval = manual_ring_interval_,
         .theme = theme_,
+        .waveform_frequency_hz = waveform_frequency_hz_,
+        .waveform_phase_convention = waveform_phase_convention_,
     };
     (void)save_config(config_path_, cfg);
 }
@@ -301,8 +309,15 @@ void App::draw_dockspace_host() {
         ImGuiID left_id = 0;
         ImGuiID right_id = 0;
         ImGui::DockBuilderSplitNode(dockspace_id, ImGuiDir_Left, 1.0F / 3.0F, &left_id, &right_id);
+        // The waveform panel (#105/#108) docks below the polar plot, within
+        // that same right-hand 2/3 region -- "docked near the polar plot" per
+        // #105's Further Notes, leaving the exact proportions to judgment.
+        ImGuiID polar_id = 0;
+        ImGuiID waveform_id = 0;
+        ImGui::DockBuilderSplitNode(right_id, ImGuiDir_Up, 0.7F, &polar_id, &waveform_id);
         ImGui::DockBuilderDockWindow("Vectors", left_id);
-        ImGui::DockBuilderDockWindow("Polar plot", right_id);
+        ImGui::DockBuilderDockWindow("Polar plot", polar_id);
+        ImGui::DockBuilderDockWindow("Waveform", waveform_id);
         ImGui::DockBuilderFinish(dockspace_id);
     }
 
@@ -348,6 +363,10 @@ void App::render() {
     // any more -- the dockspace and, on first run, DockBuilder own that.
     ImGui::Begin("Polar plot");
     draw_plot();
+    ImGui::End();
+
+    ImGui::Begin("Waveform");
+    draw_waveform_panel();
     ImGui::End();
 
     ImGui::Begin("Vectors");
@@ -569,6 +588,103 @@ void App::draw_plot() {
     }
     apply_interactive_result(a_, result->a);
     apply_interactive_result(b_, result->b);
+}
+
+void App::advance_waveforms(float tick_seconds) {
+    waveform_time_seconds_ += tick_seconds;
+
+    // Same visibility inputs draw_plot() assembles for plan_plot -- only the
+    // fields named_vector_visible actually reads are populated, since a/b are
+    // irrelevant to visibility.
+    const PlotInputs visibility_inputs{
+        .a = {},
+        .b = {},
+        .derived = derived_,
+        .show_sum = show_sum_,
+        .show_difference = show_difference_,
+        .show_difference_ba = show_difference_ba_,
+        .show_product = show_product_,
+        .show_quotient_ab = show_quotient_ab_,
+        .show_quotient_ba = show_quotient_ba_,
+    };
+
+    constexpr float kTwoPi = 2.0F * std::numbers::pi_v<float>;
+    const float angular_frequency = kTwoPi * waveform_frequency_hz_;
+
+    for (std::size_t i = 0; i < kNamedVectorCount; ++i) {
+        const NamedVectorSpec& spec = kNamedVectorSpecs[i];
+        vecmath::Vec2 vec{0.0, 0.0};
+        bool visible = true;
+        if (spec.accessor == nullptr) {
+            // A is always kNamedVectorSpecs[0], B is always [1] -- see
+            // kNamedVectorSpecs' documented fixed order.
+            vec = (i == 0) ? to_vec(a_.xy) : to_vec(b_.xy);
+        } else {
+            visible = named_vector_visible(spec, visibility_inputs);
+            if (const auto value = derived_.*spec.accessor) {
+                vec = *value;
+            }
+        }
+        const PolarDisplay display = to_polar_display(vec);
+        waveform_plotting::advance(waveform_buffers_[i], visible, display.amplitude,
+                                   display.phase_deg, angular_frequency, waveform_phase_convention_,
+                                   waveform_time_seconds_);
+    }
+}
+
+void App::prime_waveforms_for_screenshot() {
+    constexpr float kTickSeconds = 1.0F / waveform_plotting::kSampleRateHz;
+    for (std::size_t i = 0; i < waveform_plotting::WaveformBuffer::kSampleCount; ++i) {
+        advance_waveforms(kTickSeconds);
+    }
+}
+
+void App::draw_waveform_panel() {
+    ImGui::SetNextItemWidth(ImGui::CalcTextSize("-000.00").x +
+                            ImGui::GetStyle().FramePadding.x * 2.0F +
+                            ImGui::GetFrameHeight() * 2.0F);
+    if (ImGui::InputFloat("Frequency (Hz)", &waveform_frequency_hz_, 0.0F, 0.0F, "%.2f")) {
+        waveform_frequency_hz_ = clamp_waveform_frequency_hz(waveform_frequency_hz_);
+    }
+
+    ImGui::TextUnformatted("Phase convention");
+    ImGui::SameLine();
+    const bool is_lag =
+        draw_binary_radio("Lag##waveform_phase_convention", "Lead##waveform_phase_convention",
+                          waveform_phase_convention_ == waveform_plotting::PhaseConvention::kLag);
+    waveform_phase_convention_ = is_lag ? waveform_plotting::PhaseConvention::kLag
+                                        : waveform_plotting::PhaseConvention::kLead;
+
+    ImGui::Spacing();
+
+    // Same visibility gate as advance_waveforms/draw_plot -- only the
+    // currently-shown named vectors get a trace, so this plot can never
+    // disagree with the polar plot about what's visible.
+    const PlotInputs visibility_inputs{
+        .a = {},
+        .b = {},
+        .derived = derived_,
+        .show_sum = show_sum_,
+        .show_difference = show_difference_,
+        .show_difference_ba = show_difference_ba_,
+        .show_product = show_product_,
+        .show_quotient_ab = show_quotient_ab_,
+        .show_quotient_ba = show_quotient_ba_,
+    };
+
+    std::vector<waveform_plotting::Trace> traces;
+    traces.reserve(kNamedVectorCount);
+    for (std::size_t i = 0; i < kNamedVectorCount; ++i) {
+        const NamedVectorSpec& spec = kNamedVectorSpecs[i];
+        if (!named_vector_visible(spec, visibility_inputs)) {
+            continue;
+        }
+        const polarplot::MarkerColor color = spec.color;
+        traces.push_back({spec.label, &waveform_buffers_[i],
+                          waveform_plotting::TraceColor{color.r, color.g, color.b, color.a}});
+    }
+
+    waveform_plotting::draw_waveform_plot("##waveform", traces);
 }
 
 }  // namespace ui
